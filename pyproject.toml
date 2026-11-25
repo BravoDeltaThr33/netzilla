@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "netzilla"
+version = "4.5.0"
+description = "Retro terminal TUI for network engineers: Wi-Fi/RF analysis, LAN diagnostics (ARP/DHCP/SNMP/syslog), DNS/RDAP/DoH, BGP, TLS/CT, threat intel and config review — free and open data sources only, with pixel graphs in kitty and Ghostty."
+readme = "README.txt"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "netzilla" }]
+keywords = ["network", "tui", "netops", "noc", "dns", "bgp", "security", "wifi", "kitty", "ghostty"]
+
+dependencies = [
+    # Tested with Textual 8.0 and 8.2; a future major release may change APIs.
+    "textual>=8.0,<9",
+    "httpx>=0.27,<1",
+    # Pixel graphs (kitty, Ghostty). If it is missing, graphs are drawn as text.
+    "pillow>=10.1",
+    # WIFI -> BLUETOOTH and BT TRACKERS (BlueZ on Linux, CoreBluetooth on macOS).
+    "bleak>=1.0",
+    "tomli>=2.0; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+speedtest = ["speedtest-cli>=2.1.3"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+
+[project.scripts]
+netzilla = "netzilla.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+netzilla = ["*.tcss", "data/*.csv", "data/*.csv.gz", "data/*.toml", "data/*.png"]

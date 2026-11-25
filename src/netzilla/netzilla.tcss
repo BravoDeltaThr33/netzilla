@@ -1,0 +1,616 @@
+/* netzilla — retro CRT styling.
+   Colours come from the active theme, so every rule below follows whichever
+   of the seventeen palettes is selected. Borders are single-line box drawing with
+   the title embedded in the top edge. */
+
+Screen {
+    background: $background;
+    color: $foreground;
+}
+
+Header {
+    background: $panel;
+    color: $primary;
+    text-style: bold;
+}
+
+Footer {
+    background: $panel;
+    color: $foreground;
+}
+
+/* ------------------------------------------------------------- tab bar */
+
+/* Textual's TabbedContent, ContentSwitcher and TabPane all default to
+   height: auto. Left alone, that collapses the 1fr results pane inside each
+   tab to zero rows, so the chain is pinned explicitly here. */
+
+TabbedContent {
+    height: 1fr;
+}
+
+TabbedContent > ContentSwitcher {
+    height: 1fr;
+}
+
+LookupPane, SettingsPane {
+    height: 1fr;
+    width: 1fr;
+}
+
+Tabs {
+    background: $panel;
+    height: 2;
+}
+
+/* 19 tabs at 2 columns of padding each side needed ~192 columns, which
+   overflowed a full-width terminal. One column each side fits them all in
+   ~154 and leaves room for the tabs still to come. */
+Tab {
+    color: $secondary;
+    text-style: none;
+    padding: 0 1;
+}
+
+Tab:hover {
+    color: $accent;
+}
+
+Tabs:focus .-active {
+    color: $accent;
+}
+
+Tab.-active {
+    color: $primary;
+    text-style: bold;
+}
+
+TabPane {
+    height: 1fr;
+    padding: 1 1 0 1;
+    background: $background;
+}
+
+/* ------------------------------------------------------- control panel */
+
+.control-bar {
+    height: auto;
+    border: solid $secondary;
+    border-title-color: $primary;
+    border-title-style: bold;
+    border-title-align: left;
+    background: $panel;
+    padding: 0 1;
+    margin-bottom: 1;
+}
+
+.control-bar:focus-within {
+    border: solid $primary;
+}
+
+.pane-desc {
+    color: $secondary;
+    height: auto;
+    padding: 0 0 1 0;
+}
+
+/* The first line of every control box: the description, and the ▲ / ▼ that
+   rolls the controls up so the output gets the screen (F3 does the same). */
+.control-head {
+    height: auto;
+}
+
+.control-head > .pane-desc {
+    width: 1fr;
+}
+
+.collapsed-note {
+    display: none;
+    width: 1fr;
+    height: 1;
+    color: $secondary;
+}
+
+Button.collapse-toggle {
+    width: 5;
+    min-width: 5;
+    height: 1;
+    border: none;
+    padding: 0 1;
+    margin: 0;
+    background: $panel;
+    color: $primary;
+    text-style: bold;
+}
+
+Button.collapse-toggle:hover {
+    border: none;
+    background: $surface;
+    color: $accent;
+}
+
+Button.collapse-toggle:focus {
+    border: none;
+    color: $accent;
+    text-style: bold reverse;
+}
+
+.-controls-collapsed .control-head > .pane-desc,
+.-controls-collapsed .control-bar .field-row,
+.-controls-collapsed .control-bar .action-grid,
+.-controls-collapsed .control-bar .action-row,
+.-controls-collapsed .collapsible,
+.-controls-collapsed .banner {
+    display: none;
+}
+
+.-controls-collapsed .collapsed-note {
+    display: block;
+}
+
+.-controls-collapsed .control-bar {
+    margin-bottom: 0;
+}
+
+.field-row {
+    height: auto;
+}
+
+.field {
+    height: auto;
+    width: 1fr;
+    padding-right: 2;
+}
+
+/* The last box on a row ends flush with the right-hand edge of the buttons
+   below it. */
+.field.field-last {
+    padding-right: 0;
+}
+
+.field-label {
+    color: $secondary;
+    text-style: bold;
+    height: 1;
+}
+
+.field-input {
+    background: $surface;
+    color: $foreground;
+    border: tall $secondary;
+    height: 3;
+}
+
+.field-input:focus {
+    border: tall $accent;
+    background: $surface;
+}
+
+/* Select is a composite: the value lives in an inner SelectCurrent that
+   carries its own `tall` border. Giving the outer Select a border AND a fixed
+   height leaves the inner widget one row to draw three in, so the selected
+   value renders as nothing at all. Style the inner widget instead and let the
+   outer one size itself. */
+
+.field-select {
+    height: auto;
+    background: $surface;
+    /* No border of its own: the global Select rule below would otherwise
+       draw a second box around SelectCurrent's, making every drop-down two
+       rows taller than the text boxes beside it. */
+    border: none;
+}
+
+.field-select > SelectCurrent {
+    background: $surface;
+    color: $foreground;
+    border: tall $secondary;
+}
+
+.field-select:focus > SelectCurrent {
+    border: tall $accent;
+}
+
+.field-select > SelectOverlay {
+    background: $panel;
+    color: $foreground;
+    border: tall $accent;
+}
+
+.config-input {
+    height: 12;
+    border: tall $secondary;
+    background: $surface;
+    color: $foreground;
+}
+
+.config-input:focus {
+    border: tall $accent;
+}
+
+/* A tab's buttons: one blank line above them, then one grid per row of
+   buttons. Every row of a tab gets the same number of equal columns
+   (screens/base.py, fit_action_rows), so the buttons line up under each
+   other and a full row runs from edge to edge. */
+.action-grid {
+    height: auto;
+    padding-top: 1;
+}
+
+.action-row {
+    layout: grid;
+    grid-size: 6;
+    grid-columns: 1fr;
+    grid-rows: 3;
+    grid-gutter: 0 2;
+    height: auto;
+}
+
+Button.action {
+    min-width: 14;
+    height: 3;
+    border: tall $secondary;
+    background: $panel;
+    color: $foreground;
+    text-style: bold;
+}
+
+/* In a row each button fills its column; the grid's gutter spaces them. */
+.action-row > Button.action {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+}
+
+Button.action.primary {
+    border: tall $primary;
+    color: $primary;
+}
+
+Button.action:hover {
+    background: $surface;
+    color: $accent;
+    border: tall $accent;
+}
+
+Button.action:focus {
+    border: tall $accent;
+    color: $accent;
+}
+
+/* ------------------------------------------------------ password modal */
+
+/* Asked inside the interface, because a tool prompting on stdin would be
+   invisible underneath netzilla's own screen. */
+
+/* `align` takes a horizontal AND a vertical value, in that order. Anything
+   else stops the whole stylesheet from parsing, which stops netzilla from
+   starting at all — tests/test_smoke.py now parses this file so that cannot
+   ship again. */
+PasswordPrompt {
+    align: center middle;
+    background: $background 70%;
+}
+
+.password-box {
+    width: 78;
+    height: auto;
+    padding: 1 2;
+    background: $panel;
+    border: tall $accent;
+    border-title-color: $primary;
+    border-title-style: bold;
+    border-title-align: left;
+}
+
+.password-actions {
+    margin-top: 1;
+}
+
+.password-note {
+    height: auto;
+    color: $secondary;
+    padding-bottom: 1;
+}
+
+/* ---------------------------------------------------------- help card */
+
+/* Instructions for the highlighted tool. Hidden until a button is hovered or
+   focused; hidden again as soon as that tool's output arrives. */
+.action-help {
+    display: none;
+    height: auto;
+    max-height: 65%;
+    margin-bottom: 1;
+    background: $background;
+}
+
+.idle-hint {
+    height: auto;
+    padding: 0 1;
+}
+
+/* ------------------------------------------------------------- results */
+
+.results {
+    height: 1fr;
+    background: $background;
+    scrollbar-background: $panel;
+    scrollbar-color: $secondary;
+    scrollbar-color-hover: $primary;
+    scrollbar-size-vertical: 1;
+}
+
+.result-panel {
+    height: auto;
+    margin-bottom: 1;
+}
+
+.status-line {
+    height: auto;
+    color: $accent;
+    padding: 0 0 1 0;
+}
+
+/* A live list you can pick from — click a row, or Tab to it and use the
+   arrow keys (screens/picking.py) — and the one line over it that says what
+   is picked. The list tints while it has the keyboard. */
+.pick-bar {
+    height: 1;
+    padding: 0 1;
+}
+
+PickList:focus {
+    background: $surface;
+}
+
+/* -------------------------------------------------------------- banner */
+
+/* DASH's logo and the line under it, centred. */
+.banner {
+    height: auto;
+    padding: 0 0 1 0;
+}
+
+.banner-art {
+    width: 100%;
+    height: auto;
+    color: $primary;
+    text-style: bold;
+    text-align: center;
+}
+
+.banner-tagline {
+    width: 100%;
+    height: 1;
+    text-align: center;
+}
+
+/* The one-line status at the top of DASH's overview, and its rows of
+   panels packed without gaps so the whole overview fits on one screen. */
+.dash-status {
+    height: 1;
+}
+
+#dash-row-1, #dash-row-2, #dash-row-3 {
+    margin-bottom: 0;
+}
+
+/* DASH's control box is one line of description over two buttons, with no
+   blank line between them, so the whole overview fits a 160 x 50 screen. */
+DashboardPane .control-head > .pane-desc {
+    padding: 0;
+}
+
+DashboardPane .action-grid {
+    padding-top: 0;
+}
+
+/* ------------------------------------------------------------ settings */
+
+.settings-scroll {
+    height: 1fr;
+    scrollbar-background: $panel;
+    scrollbar-color: $secondary;
+    scrollbar-size-vertical: 1;
+}
+
+.settings-group {
+    height: auto;
+    border: solid $secondary;
+    border-title-color: $primary;
+    border-title-style: bold;
+    border-title-align: left;
+    background: $panel;
+    padding: 0 1;
+    margin-bottom: 1;
+}
+
+.cred-row {
+    height: auto;
+    padding-bottom: 1;
+}
+
+.cred-label {
+    color: $primary;
+    text-style: bold;
+    height: 1;
+}
+
+.cred-note {
+    color: $secondary;
+    height: auto;
+}
+
+.cred-source {
+    height: 1;
+    text-style: bold;
+}
+
+.cred-input {
+    background: $surface;
+    color: $foreground;
+    border: tall $secondary;
+    height: 3;
+}
+
+.cred-input:focus {
+    border: tall $accent;
+}
+
+/* In SETTINGS every box is one row high, marked by a bar on its left that
+   lights up when it has focus: five keys and the timeout fit on one screen
+   instead of three. */
+.settings-group .cred-input {
+    height: 1;
+    border: none;
+    border-left: outer $secondary;
+    padding: 0 1;
+}
+
+.settings-group .cred-input:focus {
+    border: none;
+    border-left: outer $accent;
+    background: $boost;
+}
+
+/* The same for the two drop-downs: the inner SelectCurrent carries the only
+   border (see .field-select above for why it must be the inner one). */
+.settings-group Select {
+    height: auto;
+    border: none;
+    background: $panel;
+}
+
+.settings-group Select > SelectCurrent {
+    border: tall $secondary;
+    background: $surface;
+}
+
+.settings-group Select:focus > SelectCurrent {
+    border: tall $accent;
+}
+
+.cred-state-set {
+    color: $success;
+    height: 1;
+}
+
+.cred-state-missing {
+    color: $warning;
+    height: 1;
+}
+
+.theme-option {
+    height: 3;
+    width: 1fr;
+}
+
+Select {
+    background: $surface;
+    border: tall $secondary;
+}
+
+Switch {
+    background: $surface;
+    border: tall $secondary;
+}
+
+#settings-results {
+    height: auto;
+    max-height: 24;
+}
+
+/* The buttons sit under the description, before the columns, so SAVE and
+   TEST KEYS never scroll away. */
+.settings-actions {
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+#settings-feedback {
+    padding: 0 0 1 0;
+}
+
+/* Keys on the left, everything else on the right; SettingsPane stacks the
+   two below ~118 columns. */
+.settings-columns {
+    height: auto;
+}
+
+.settings-col {
+    height: auto;
+    width: 1fr;
+}
+
+.settings-columns.-wide #settings-left {
+    margin-right: 1;
+}
+
+/* A key's name and where its value comes from, on one line. */
+.cred-head {
+    height: 1;
+}
+
+.cred-head > .cred-label {
+    width: auto;
+}
+
+.cred-head > .cred-source {
+    width: 1fr;
+    text-align: right;
+}
+
+/* A switch (or the timeout box) with its explanation beside it. */
+.switch-row {
+    height: auto;
+}
+
+.switch-note {
+    width: 1fr;
+    height: auto;
+    padding: 0 0 0 2;
+    color: $secondary;
+}
+
+/* One-row switches, marked like the boxes. */
+.settings-group Switch {
+    height: 1;
+    width: 10;
+    border: none;
+    border-left: outer $secondary;
+    padding: 0 1;
+}
+
+.settings-group Switch:focus {
+    border: none;
+    border-left: outer $accent;
+    background: $boost;
+}
+
+.timeout-input {
+    width: 10;
+}
+
+.settings-hint {
+    height: auto;
+    color: $secondary;
+    padding: 0 1;
+}
+
+#settings-status {
+    margin-bottom: 1;
+}
+
+.toast-ok {
+    color: $success;
+    height: auto;
+    padding: 1 0;
+}
+
+/* Pixel graphs carry each image's id in their text colour. The command
+   palette normally dims the screen behind it, which changes those colours
+   and blanks every graph while it is open — so it opens without dimming. */
+CommandPalette {
+    background: transparent;
+}

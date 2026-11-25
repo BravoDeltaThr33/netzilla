@@ -1,0 +1,121 @@
+===============================================================================
+ Installing netzilla 4.5.0
+===============================================================================
+
+netzilla is a terminal (text-based) app for network admins — Wi-Fi and LAN
+diagnostics, subnet maths, DNS/WHOIS, TLS checks, BGP/routing lookups, a
+speed test, threat intel and more, all in one tabbed screen. Every data
+source it uses is free.
+
+This copy has no API keys in it, so it is safe to keep and pass along.
+Every tab works without a key; four reputation sources (AbuseIPDB,
+VirusTotal, GreyNoise, abuse.ch) switch on once you add a key from a free
+account — section 4 of README.txt covers that. Not needed to get started.
+
+Pick your OS below.
+
+
+-------------------------------------------------------------------------------
+ LINUX (Ubuntu 22.04/24.04, Linux Mint 21.x/22.x)
+-------------------------------------------------------------------------------
+
+Open a terminal (Ctrl+Alt+T) and run these one at a time.
+
+ 1. Check Python (need 3.10 or newer; skip the second line if the first
+    already prints 3.10+):
+        python3 --version
+        sudo apt update && sudo apt install python3 python3-venv python3-pip
+
+ 2. Install the command-line tools netzilla wraps (bluez is for the
+    Bluetooth scanner on the WIFI tab; desktops usually have it already):
+        sudo apt install dnsutils whois openssl iputils-ping traceroute mtr-tiny bluez
+
+ 3. Install pipx (installs Python apps in their own isolated environment):
+        sudo apt install pipx
+        pipx ensurepath
+    Close and reopen your terminal after this.
+
+ 4. Unpack and install netzilla:
+        cd ~/Downloads
+        tar -xzf netzilla-4.5.0-friend.tar.gz
+        cd netzilla
+        pipx install .
+    Optional (adds the OOKLA TEST on the SPEED tab; the built-in speed test
+    needs nothing):
+        pipx inject netzilla speedtest-cli
+
+ 5. Run it:
+        netzilla
+    If "netzilla: command not found", open a new terminal, or run:
+        ~/.local/bin/netzilla
+
+
+-------------------------------------------------------------------------------
+ macOS (Ventura 13 or newer, Apple Silicon or Intel)
+-------------------------------------------------------------------------------
+
+Open Terminal (or iTerm2) and run these one at a time.
+
+ 1. Install Homebrew, if you don't already have it:
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    Follow the "Next steps" it prints (usually a couple of lines to add to
+    your shell profile). Skip this step if `brew --version` already works.
+
+ 2. Install Python, pipx, and two extra tools netzilla uses:
+        brew install python pipx mtr net-snmp
+        pipx ensurepath
+    (macOS already has dig, whois, traceroute, ping and openssl built in.)
+    Close and reopen your terminal after this.
+
+ 3. Unpack and install netzilla:
+        cd ~/Downloads
+        tar -xzf netzilla-4.5.0-friend.tar.gz
+        cd netzilla
+        pipx install .
+    Optional (adds the OOKLA TEST on the SPEED tab):
+        pipx inject netzilla speedtest-cli
+
+ 4. Run it:
+        netzilla
+    If macOS's firewall asks whether to allow incoming connections when you
+    use LAN -> SWEEP or SYSLOG CATCH, click Allow — that's expected.
+
+
+-------------------------------------------------------------------------------
+ UPGRADING FROM AN OLDER netzilla
+-------------------------------------------------------------------------------
+
+ Same steps, but install with --force (your theme and settings are kept):
+        cd ~/Downloads
+        tar -xzf netzilla-4.5.0-friend.tar.gz
+        cd netzilla
+        pipx install --force .
+
+
+-------------------------------------------------------------------------------
+ EITHER OS — a few things worth knowing
+-------------------------------------------------------------------------------
+
+ * The app opens on DASH: this machine, your network, the terminal, local
+   tools, a live network graph and API quota on one screen. Press REFRESH
+   to add your public IP. F1 jumps back to DASH, F2 opens SETTINGS, T
+   cycles the colour theme, Q quits.
+ * DASH's API KEYS panel shows every key as "not set" — expected for this
+   copy, not an error. SETTINGS (F2) is where you add free keys later.
+ * WIFI -> BLUETOOTH lists every Bluetooth device broadcasting nearby —
+   name, maker, a best guess at what it is, signal and rough distance — and
+   BT TRACKERS checks for a tracker that keeps showing up near you. It only
+   listens; it never pairs with anything. Click a device (or a network in
+   LIVE AIR) to graph it; click it again to show only that one.
+ * In kitty (0.28+) or Ghostty (1.0+) the graphs are drawn as real images;
+   in any other terminal they are drawn with characters. `netzilla
+   --terminal` shows what netzilla detected.
+ * Hover over (or Tab to) any button and an instructions card appears —
+   what to type, when you'd use it, and a safe public target to try.
+ * On the LAN tab, ROGUE DHCP and SYSLOG CATCH bind privileged ports, so
+   they need `sudo netzilla` to fully work. SYSLOG CATCH still works
+   without sudo — it uses port 1514 instead of 514 automatically.
+ * Only scan or sweep networks and hosts you own or are allowed to test.
+
+The full README.txt inside the archive has everything else: every tab
+explained, troubleshooting, and how to add API keys.

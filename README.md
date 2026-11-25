@@ -6,32 +6,102 @@ network admin actually reaches for — plus the local tools (`dig`, `whois`,
 `openssl`, `ping`, `traceroute`, `mtr`) that no API should be replacing.
 
 Twenty-one tabs, seventeen dark colour themes, **free and open data sources
-only**, and zero setup to start using most of it. Runs on Linux and macOS.
+only**, and zero setup to start using most of it. **Version 4.5.0.**
 
 - **Pixel graphs in kitty and Ghostty.** Live Wi-Fi signal, a channel
   spectrum, interface rates and the speed test are drawn as real
   anti-aliased images in terminals that can show them, and as text
   everywhere else — netzilla asks the terminal what it is and decides for
   itself.
-- **Nothing paid.** Every source is free; most need no key at all, and
-  the few that do take a key from a free account — you bring your own.
+- **Nothing paid.** Every source is free; most need no key at all.
 - **Every control checked.** Every button on every tab and every documented
   key, in both cases, is exercised by the test suite.
 
 ![LIVE AIR in kitty — every Wi-Fi network graphed live](docs/showcase/live-air.gif)
 
-## At a glance
+## What's new in 4.5
 
-DASH puts this machine, your network, the terminal, local tools, key status,
-a live network graph and API quota side by side on one screen.
+DASH's pictures come alive:
+
+| | |
+|---|---|
+| **Right** | Tokyo at night, now a picture: Tokyo Tower, the Skytree, the towers by the bay and the Rainbow Bridge under the stars — recoloured from the theme, like the beast. |
+| **Left** | The beast's breath is alive. It rolls through the theme's own bright colours (primary, accent, success, warning, error) in waves that leave the jaws and run out to the title, its brightness rippling as they go — a 2.4-second loop. kitty and Ghostty swap a small image per frame (each sent once); Tilix and other terminals recolour the sextants. It rests whenever DASH's banner is out of sight. |
+
+![The breath, looping](docs/showcase/dash-fire.gif)
+
+## What's new in 4.4
+
+DASH's title gets a picture on each side, in the active theme's colours:
+
+| | |
+|---|---|
+| **Left** | A horned beast — armoured back lit from within, a spiked tail curled over it, claws like scythes — breathing a storm of energy into the title. It's a picture that ships with netzilla, recoloured from the theme: the body in its main colour, the hottest parts (eyes, back, breath) burning towards white with a touch of its accent. |
+| **Right** | Tokyo at night: Tokyo Tower, the Skytree, office towers with their windows lit, Mt. Fuji with snow on its peak, a crescent moon. |
+| **Everywhere** | Part of the banner image in kitty and Ghostty, with the same glow and scanlines as the letters; sextant characters in Tilix and other terminals, the beast shaded two colours to a cell. The pictures grow with the window up to 46 columns each; narrower windows get the title alone. DASH still fits 160 × 50. |
+
+![DASH with the pictures beside the title](docs/showcase/01-dash-pixel.png)
+
+![The same banner in Tilix, as sextants](docs/showcase/22-dash-banner-text.png)
+
+## What's new in 4.3
+
+Pick one device or network in a live list — and show only it.
+
+| | |
+|---|---|
+| **Pick one** (WIFI: BLUETOOTH, BT TRACKERS, LIVE AIR) | Click a row and the big signal graph follows it; the row is marked ▶ and a line over the list says what is picked, with **SHOW ONLY IT** and **LET GO** buttons. From the keyboard: <kbd>Tab</kbd> to the list, <kbd>↑</kbd> <kbd>↓</kbd> to pick. |
+| **Show only it** | Click the picked row again (or <kbd>Enter</kbd>) and the whole view shows only that device or network: its row, a taller graph, and everything known about it — for a Bluetooth device what its broadcasts say (name, best guess, maker, whether its address is fixed or changes for privacy, manufacturer data, services, transmit power) and its signal (lowest / average / highest, rough distance and what that assumes, broadcasts a second, how long it has been near you, the tracker check); for a Wi-Fi network its vendor, channel, security and signal over the run, the spectrum with just that network, and who shares or overlaps its channel. <kbd>↑</kbd> <kbd>↓</kbd> step to the next one, still on its own; <kbd>Esc</kbd> steps back. |
+| **Follows you around** | A device picked in BLUETOOTH stays picked in BT TRACKERS (if it's a tracker); SIGNAL watches the network picked in LIVE AIR when the GRAPH box is empty. Typing in the GRAPH box drops the pick — whichever you did last wins. |
+| **Steadier lists** | Rows change places only when a signal has really moved, and hold still while the pointer is over the list, so a row can't move away as you click. |
+| **Fixed** | BLUETOOTH could graph a device last heard a minute ago as "nearest". It now graphs the nearest heard in the last 15 seconds, and greys a quiet device's old reading. |
+
+![BLUETOOTH showing only one device](docs/showcase/20-wifi-bluetooth-only-pixel.png)
+
+![LIVE AIR with a network picked](docs/showcase/21-wifi-live-air-picked-pixel.png)
+
+## What's new in 4.2
+
+| | |
+|---|---|
+| **BLUETOOTH** (WIFI tab) | Every Bluetooth device broadcasting nearby, live: its name, maker (from the manufacturer ID in the broadcast), a best guess at what it is — phone, earbuds, watch, TV, beacon, tracker… (AirPods models, AirTags and Find My, Windows PCs, iBeacon/Eddystone, Fast Pair, Tile, SmartTag, Chipolo and Find Hub tags are decoded) — signal with a history sparkline and a big graph, rough distance, and first and last heard. Listening only: it never pairs or connects. |
+| **BT TRACKERS** | The tracker safety check: trackers near you for 10+ minutes, or heard on two or more networks you were on (remembered locally for seven days), are flagged. An AirTag with its owner never is. |
+| **Buttons lined up** | Every tab's buttons sit on equal columns shared by all its rows, full rows run edge to edge, and drop-downs are as tall as the boxes beside them. |
+
+![BLUETOOTH on the WIFI tab](docs/showcase/18-wifi-bluetooth-pixel.png)
+
+![BT TRACKERS](docs/showcase/19-wifi-bt-trackers-pixel.png)
+
+## What's new in 4.1
+
+DASH and SETTINGS now use the whole screen.
+
+| | |
+|---|---|
+| **DASH** | Centred logo, then three rows of panels side by side: THIS MACHINE (OS, kernel, uptime, load, memory), NETWORK (interface, addresses, gateway, real DNS servers, Wi-Fi link, public IP and ISP), TERMINAL, LOCAL TOOLING, API KEYS, DATA & CACHE, a live **NETWORK PULSE** graph of the default interface and the API QUOTA counters. Three columns on a wide terminal, two or one on narrower ones; at 160 × 50 nothing needs scrolling. |
+| **SETTINGS** | Buttons at the top; API keys on the left, appearance, display and behaviour on the right, with one-row boxes; a new KEYS AND STORAGE panel (key sources, config and cache files, exports folder, terminal). Stacks into one column below ~118 columns. |
 
 ![DASH in kitty](docs/showcase/01-dash-pixel.png)
+
+![SETTINGS](docs/showcase/17-settings-display.png)
+
+## What's new in 4.0
+
+| | |
+|---|---|
+| **Pixel graphs** | kitty 0.28+ and Ghostty 1.0+ get image graphs on WIFI (LIVE AIR, CHANNELS, SIGNAL, LINK HEALTH, TRAFFIC), INT, FLOW, CAPTURE and SPEED, plus a lit-tube DASH banner. Other terminals keep text graphs, now with a braille-dot spectrum. |
+| **Terminal detection** | Asks the terminal its name and version (XTVERSION), image support and cell size at start-up; knows kitty, Ghostty, WezTerm, iTerm2, Konsole, VTE, Windows Terminal, Alacritty, foot, tmux, Zellij, screen and SSH. `netzilla --terminal` shows what it found and why. |
+| **Free sources only** | Shodan's paid API, and the OutageDeck and EOSL.ai key boxes, are gone. DISCOVERY runs on the free InternetDB. |
+| **New** | DISCOVERY → **HOST PROFILE** and **CVE DETAIL** (CVSS + FIRST EPSS + CISA KEV); THREAT → EPSS column; LIFECYCLE → **SOFTWARE EOL** (endoflife.date); SPEED → a **built-in speed test** with bufferbloat grade; DNS without `dig` (DNS-over-HTTPS). |
+| **Faster** | Tabs are built on first visit: on screen in under half 3.5's time. |
+| **Conveniences** | <kbd>F4</kbd> copies a tab's results, <kbd>Ctrl</kbd>+<kbd>P</kbd> command palette, <kbd>Enter</kbd> runs the box's own action, clickable links, desktop notifications for long runs. |
+| **Fixed** | <kbd>Q</kbd>/<kbd>T</kbd> now work in both cases; `--tab`, `--theme` and commands match in any case; and a dozen smaller bugs found by pressing every control. |
 
 ## What's in it
 
 | Tab | What it does |
 |---|---|
-| **DASH** | This machine, the network (public IP, DNS, Wi-Fi), the terminal, local tools, key status, a live network graph and API quota — on one screen |
+| **DASH** | Public IP, local tools, the terminal and how graphs are drawn, key sources, API quota |
 | **IP LOOKUP** | One address, five independent reputation/geo opinions in parallel |
 | **SUBNET** | IPv4/IPv6 CIDR maths, splitting, host fitting, range → CIDR |
 | **DNS/WHOIS** | `dig`/`whois`, RDAP, DoH resolver-disagreement check, typosquat scan; DNS-over-HTTPS when `dig` is missing |
@@ -41,7 +111,7 @@ a live network graph and API quota side by side on one screen.
 | **DISCOVERY** | What the internet sees on an address: InternetDB scan, HOST PROFILE from four free sources, CVE DETAIL ranked by KEV, EPSS and CVSS |
 | **LAN** | Sweep that names every device on the network (vendor, hostname, what it is), per-device IDENTIFY, rogue-DHCP detector, duplicate-IP watch, SNMP, syslog catcher |
 | **INT** | Per-interface live throughput graphs, iftop/vnstat/bmon reports, NIC maker |
-| **WIFI** | A Wi-Fi workbench: live signal graphs for every network, a channel spectrum, live link health, devices on this Wi-Fi and their ports, live traffic and packets on the wireless interface, 1/6/11 channel pick, CSV export |
+| **WIFI** | A Wi-Fi workbench: live signal graphs for every network, a channel spectrum, live link health, devices on this Wi-Fi and their ports, live traffic and packets on the wireless interface, 1/6/11 channel pick, CSV export — plus BLUETOOTH (everything broadcasting nearby) and BT TRACKERS (a tracker that keeps showing up near you) |
 | **CAPTURE** | Live or bounded tshark/tcpdump capture, protocol stats, pcap save/read |
 | **FLOW** | This host's own connections — top talkers with ASN/geo/reverse DNS (LAN peers identified), service breakdown, bandwidth, blacklist flagging |
 | **MAC** | Offline IEEE vendor lookup (~54,000 prefixes), private-MAC detection, "is it on my LAN right now?" |
@@ -99,14 +169,16 @@ another one (or for as many seconds as **STOP AFTER** says).
 
 | Button | What you get |
 |---|---|
-| **LIVE AIR** | Updates every 3 seconds (or whatever REFRESH EVERY says — 1 s works): every network with a live signal bar and its last ten readings in dBm, a big graph of your own network, a live spectrum of the channels, networks that disappear marked *gone*, and the 2.4 GHz 1/6/11 load as it changes |
-| **SIGNAL** | One network's dBm as a full-height live graph — walk the building and watch it |
+| **LIVE AIR** | Updates every 3 seconds (or whatever REFRESH EVERY says — 1 s works): every network with a live signal bar and its last ten readings in dBm, a big graph of your own network — or of the one you click — a live spectrum of the channels, networks that disappear marked *gone*, and the 2.4 GHz 1/6/11 load as it changes. Click a network twice to show only it |
+| **SIGNAL** | One network's dBm as a full-height live graph — walk the building and watch it (the one in the GRAPH box, or the one picked in LIVE AIR) |
 | **LINK HEALTH** | Your own connection, live: signal and bitrate graphs, retransmissions *per second*, missed beacons, roaming, addresses/gateway/DNS, and a plain-English verdict |
 | **DEVICES** | Who else is on this Wi-Fi — the LAN sweep and device identification, aimed at the Wi-Fi's own subnet |
 | **PORTS** | The identifying-port check across every device found, with a "worth a second look" list (Telnet on a smart plug, RDP left on…) |
 | **TRAFFIC** | Download/upload of the wireless interface graphed second by second, and which apps are talking to whom over it |
 | **PACKETS** | A live capture on the wireless interface: packets/sec, protocols, busiest hosts named by the DNS lookups seen, the lookups themselves |
 | **CHANNELS** | Every network as a hump across the channels it really occupies (20/40/80/160 MHz, from the driver), and the channel to pick |
+| **BLUETOOTH** | Every Bluetooth device broadcasting nearby: name, maker, best guess at what it is, signal history, rough distance, first and last heard — trackers flagged. Click a device to graph it, twice to show only it with everything its broadcasts say |
+| **BT TRACKERS** | Trackers near you for 10+ minutes, or heard on two networks you were on, flagged — with what to do about one that isn't yours |
 | **EXPORT CSV** | All of the above, saved as CSV |
 | **SCAN / DEEP SCAN** | The one-shot survey, and exact dBm via `iw` |
 
@@ -121,7 +193,7 @@ says how old the newest one is.
 | ![LINK HEALTH](docs/showcase/06-wifi-link-health-pixel.png) | ![SIGNAL](docs/showcase/07-wifi-signal-pixel.png) |
 | ![TRAFFIC](docs/showcase/08-wifi-traffic-pixel.png) | ![INT live rates](docs/showcase/09-int-live-rates-pixel.png) |
 
-## Free lookups
+## New free lookups
 
 | | |
 |---|---|
@@ -141,8 +213,8 @@ says how old the newest one is.
   Cloudflare's free endpoints, latency, jitter and bufferbloat graded A+ to F,
   drawn live, with data use capped. Nothing to install.
 
-More in [`docs/showcase/`](docs/showcase/) — CVE lookups with EPSS, DNS
-without `dig`, service status and SETTINGS.
+More in [`docs/showcase/`](docs/showcase/) — DASH with the pixel banner, CVE
+lookups with EPSS, DNS without `dig`, service status and the DISPLAY settings.
 The Wi-Fi, LAN and speed-test screenshots use invented sample data; the rest
 are live lookups of public hosts (scanme.nmap.org, nmap.org), across a range of
 themes.
@@ -179,14 +251,14 @@ netzilla sweeps the subnet you're on and names every device it finds:
 
 ```
 IP            MAC                VENDOR       HOSTNAME             DEVICE                DETAILS
-192.168.1.1   08:9b:f1:00:00:01  eero         —                    Router / gateway      TTL 64 · Unix-like
-192.168.1.12  04:0e:3c:00:00:02  HP           HP-OfficeJet-8020    Printer               HP OfficeJet Pro 8020 · IPP print
-192.168.1.31  00:12:f0:00:00:03  Intel        DESKTOP-EXAMPLE      Windows PC            NetBIOS WORKGROUP · TTL 128
-192.168.1.44  5a:00:00:00:00:04  private MAC  Sams-iPhone          iPhone                iPhone15,2 · Apple Continuity
+192.168.1.1   08:9b:f1:3c:52:9f  eero         —                    Router / gateway      TTL 64 · Unix-like
+192.168.1.12  04:0e:3c:8a:21:5d  HP           HP-OfficeJet-8020    Printer               HP OfficeJet Pro 8020 · IPP print
+192.168.1.31  00:12:f0:6e:31:c2  Intel        DESKTOP-4K7Q2M       Windows PC            NetBIOS WORKGROUP · TTL 128
+192.168.1.44  5a:e1:07:9d:40:2c  private MAC  Alexs-iPhone         iPhone                iPhone15,2 · Apple Continuity
 ```
 
-*(illustrative)* The vendor comes from the full IEEE registry, shipped with
-netzilla and read offline. The name comes from whatever the device answers: your router's DNS,
+*(illustrative)* The vendor comes from the full IEEE registry, bundled and
+offline. The name comes from whatever the device answers: your router's DNS,
 mDNS, NetBIOS or UPnP. **DEVICE** is netzilla's best guess from all of it, and
 **IDENTIFY** on one IP shows the evidence behind the guess, plus which
 tell-tale ports are open. No API, no key.
@@ -207,6 +279,7 @@ across the tunnel, and home-address lookups never go to the VPN's DNS.
 | <kbd>F4</kbd> | Copy this tab's results as text (clipboard, OSC 52 over SSH, or a file) |
 | <kbd>Ctrl</kbd>+<kbd>P</kbd> | Command palette: any tab, theme, graphics mode, copy, clear cache |
 | <kbd>Ctrl</kbd>+<kbd>R</kbd> | Clear the response cache |
+| <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Enter</kbd> <kbd>Esc</kbd> | In a live list (LIVE AIR, BLUETOOTH, BT TRACKERS): pick a row, show only it, step back — or click |
 | <kbd>Q</kbd> | Quit (<kbd>Ctrl</kbd>+<kbd>Q</kbd> anywhere) |
 
 Letters work in either case. `netzilla --tab wifi` opens on a tab (any case,
@@ -229,40 +302,38 @@ graphs).
 Needs **Python 3.10+** and [pipx](https://pipx.pypa.io/).
 
 ```bash
-# 1. Prerequisites — Ubuntu / Linux Mint
+# Ubuntu / Linux Mint
 sudo apt update
-sudo apt install -y python3 python3-venv pipx git dnsutils whois openssl \
-    iputils-ping traceroute mtr-tiny iw
+sudo apt install -y python3 python3-venv pipx dnsutils whois openssl \
+    iputils-ping traceroute mtr-tiny iw bluez
 pipx ensurepath        # then open a new terminal
 
-# 1. Prerequisites — macOS (Homebrew)
-brew install python pipx git mtr net-snmp
+# macOS
+brew install python pipx mtr net-snmp
 pipx ensurepath        # then open a new terminal
+```
 
-# 2. Get netzilla and install it
-git clone https://github.com/OWNER/netzilla.git
+Then:
+
+```bash
+tar -xzf netzilla-4.5.0.tar.gz
 cd netzilla
 pipx install .
-
-# 3. Run it
 netzilla --terminal    # optional: what netzilla sees in this terminal
 netzilla
 ```
 
-Prefer a release archive? Download it from the Releases page, then
-`tar -xzf netzilla-4.1.0.tar.gz && cd netzilla && pipx install .`
-
 Pillow (for the pixel graphs) is installed with it. The speed test is built
 in; `pipx inject netzilla speedtest-cli` adds the optional OOKLA TEST.
 
-Upgrading: `git pull` (or unpack the new archive), then
-`pipx install --force .` — your theme and saved keys are kept.
+Upgrading from an older version: same steps, but `pipx install --force .`.
+Your theme and settings are kept.
 
 For pixel graphs, run netzilla in [kitty](https://sw.kovidgoyal.net/kitty/)
 0.28+ or [Ghostty](https://ghostty.org/) 1.0+ (the kitty packaged for Ubuntu
-22.04 / Mint 21 is too old — use kitty's own installer;
-[the manual](docs/MANUAL.txt), section 2, has the commands for both). In
-tmux, add `set -g allow-passthrough on` to `~/.tmux.conf`.
+22.04 / Mint 21 is too old — use kitty's own installer; README.txt §3 has the
+commands for both). In tmux, add `set -g allow-passthrough on` to
+`~/.tmux.conf`.
 
 `netzilla` opens straight to the DASH tab. Every tab tells you exactly which
 package to install if a tool it wraps is missing — check `DIAG → TOOL CHECK`
@@ -275,35 +346,22 @@ sudo apt install -y tshark tcpdump   # answer YES to "non-superusers capture?"
 sudo usermod -aG wireshark $USER     # log out & back in afterwards
 ```
 
-## API keys — bring your own (all free)
+## API keys
 
-netzilla ships with **no API keys**, and every tab works without one. Four
-reputation sources switch on when you add a key from a free account:
+Most tabs work with nothing configured. A handful of reputation lookups
+(AbuseIPDB, VirusTotal, GreyNoise, abuse.ch) need a key from a **free**
+account; NVD's free key is optional and raises its rate limit. Nothing in
+netzilla needs a paid plan.
 
-| Service | Free tier | Get a key |
-|---|---|---|
-| AbuseIPDB | 1,000 checks/day | <https://www.abuseipdb.com/account/api> |
-| VirusTotal | 4 lookups/min, 500/day (non-commercial) | <https://www.virustotal.com/gui/my-apikey> |
-| GreyNoise Community | 50 lookups/week | <https://viz.greynoise.io/signup> |
-| abuse.ch (URLhaus, ThreatFox, MalwareBazaar) | free | <https://auth.abuse.ch/> |
-| NVD *(optional)* | raises CVE lookups from 5 to 50 per 30 s | <https://nvd.nist.gov/developers/request-an-api-key> |
+> **This copy has no keys bundled**, so it is safe to keep and pass along.
+> Free keys: [AbuseIPDB](https://www.abuseipdb.com/account/api),
+> [VirusTotal](https://www.virustotal.com/gui/my-apikey),
+> [GreyNoise](https://viz.greynoise.io/signup),
+> [abuse.ch](https://auth.abuse.ch/) and, optionally,
+> [NVD](https://nvd.nist.gov/developers/request-an-api-key).
 
-Press <kbd>F2</kbd> for **SETTINGS**, paste each key into its box, press
-**SAVE SETTINGS**, then **TEST KEYS**. Keys are stored only on your machine,
-in `~/.config/netzilla/config.toml` (mode 0600), and each is sent only to the
-service it belongs to.
-
-Or use environment variables, which win over saved keys:
-
-```bash
-export NETZILLA_ABUSEIPDB_API_KEY=...
-export NETZILLA_VIRUSTOTAL_API_KEY=...
-export NETZILLA_GREYNOISE_API_KEY=...
-export NETZILLA_ABUSECH_AUTH_KEY=...
-export NETZILLA_NVD_API_KEY=...        # optional
-```
-
-![SETTINGS](docs/showcase/17-settings-display.png)
+Type them on the **SETTINGS** tab (<kbd>F2</kbd>), SAVE, then TEST KEYS.
+They are stored only in `~/.config/netzilla/config.toml` (mode 0600).
 
 ## Data sources
 
@@ -312,8 +370,8 @@ IPLogs, RDAP, Cloudflare/Google/Quad9 DNS-over-HTTPS, Qualys SSL Labs, crt.sh,
 RIPEstat, Team Cymru, NVD, CISA KEV, FIRST EPSS, abuse.ch (URLhaus,
 ThreatFox, MalwareBazaar, Feodo Tracker), Shodan InternetDB, macvendors.com,
 EOSL.ai, endoflife.date, OutageDeck, Cloudflare's speed-test endpoints and
-Have I Been Pwned — plus the local tools. [The manual](docs/MANUAL.txt),
-section 5, lists each one's limits. Responses are cached in SQLite so repeat lookups cost no quota.
+Have I Been Pwned — plus the local tools. README.txt §6 lists each one's
+limits. Responses are cached in SQLite so repeat lookups cost no quota.
 
 ## Running the tests
 
@@ -322,7 +380,7 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-689 tests. Everything is exercised with recorded or mocked responses and a
+859 tests. Everything is exercised with recorded or mocked responses and a
 fake terminal. No network calls, no root, no packets sent to the devices on
 your LAN, and no real key is ever used or printed.
 
@@ -335,15 +393,8 @@ CREDS, which only checks *your own* password or address against Have I Been
 Pwned. Nothing on the WIFI tab associates with, deauthenticates or attacks
 anyone's network; DEVICES, PORTS and PACKETS are for networks you run.
 
-## Documentation
-
-[`docs/MANUAL.txt`](docs/MANUAL.txt) covers every tab, step-by-step installs
-for Linux and macOS, every command-line option, data sources and their
-limits, and troubleshooting. [`CHANGELOG.md`](CHANGELOG.md) lists what
-changed.
-
 ## License
 
-[MIT](LICENSE). netzilla is an independent project and isn't affiliated with, endorsed
+MIT. netzilla is an independent project and isn't affiliated with, endorsed
 by, or sponsored by any of the data providers it queries. Only scan or
 enumerate infrastructure you own or are explicitly authorized to test.
