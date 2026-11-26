@@ -163,8 +163,7 @@ def _dash(tmp_path, script, size=(160, 50)):
     from netzilla.app import NetzillaApp
 
     async def go():
-        app = NetzillaApp(config_path=tmp_path / "config.toml", offline=True,
-                          use_default_keys=False)
+        app = NetzillaApp(config_path=tmp_path / "config.toml", offline=True)
         async with app.run_test(size=size) as pilot:
             await pilot.pause()
             await app.workers.wait_for_complete()

@@ -64,7 +64,6 @@ UNLOCKS = {
     "nvd_api_key": "10× CVE rate",
 }
 SOURCE_WORDS = {
-    "default": ("bundled ✔", "success"),
     "custom": ("your own ✔", "success"),
     "env": ("environment ✔", "accent"),
     "none": ("not set", "warning"),

@@ -4,3 +4,7 @@ __pycache__/
 .pytest_cache/
 build/
 dist/
+
+# API keys never belong in the repository or the package. netzilla no longer
+# reads this file; the rule keeps one left over from an older copy out of git.
+default_credentials.toml

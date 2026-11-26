@@ -28,7 +28,6 @@ def _app(tmp_path) -> NetzillaApp:
     return NetzillaApp(
         config_path=tmp_path / "config.toml",
         offline=True,
-        use_default_keys=False,
     )
 
 

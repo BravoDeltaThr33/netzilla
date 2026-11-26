@@ -353,7 +353,7 @@ Most tabs work with nothing configured. A handful of reputation lookups
 account; NVD's free key is optional and raises its rate limit. Nothing in
 netzilla needs a paid plan.
 
-> **This copy has no keys bundled**, so it is safe to keep and pass along.
+> **netzilla ships with no API keys**, so any copy is safe to keep and pass along.
 > Free keys: [AbuseIPDB](https://www.abuseipdb.com/account/api),
 > [VirusTotal](https://www.virustotal.com/gui/my-apikey),
 > [GreyNoise](https://viz.greynoise.io/signup),

@@ -34,4 +34,4 @@ netzilla = "netzilla.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-netzilla = ["*.tcss", "data/*.csv", "data/*.csv.gz", "data/*.toml", "data/*.png"]
+netzilla = ["*.tcss", "data/*.csv", "data/*.csv.gz", "data/*.png"]

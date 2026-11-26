@@ -17,9 +17,9 @@ administrator actually reaches for — plus the local tools (dig, whois,
 openssl, ping, traceroute, mtr) that no API should be replacing.
 
 
-  THIS COPY HAS NO API KEYS IN IT
+  NETZILLA SHIPS WITH NO API KEYS
   -------------------------------
-  It is safe to keep and to pass along. Every tab works without a key;
+  Any copy is safe to keep and to pass along. Every tab works without a key;
   four reputation sources (AbuseIPDB, VirusTotal, GreyNoise, abuse.ch)
   switch on once you add a key from a free account. Section 4 walks
   through getting each one and adding it on the SETTINGS tab (F2).
@@ -1377,8 +1377,8 @@ a terminal (Ctrl+Alt+T opens one on both).
      netzilla
 
  The app opens on DASH. The API KEYS panel shows every key as "not set" —
- expected for this copy, see section 4 — and DATA & CACHE should show
- "URLhaus snapshot 56,366 URLs".
+ expected, since netzilla ships with no keys; see section 4 — and DATA &
+ CACHE should show "URLhaus snapshot 56,366 URLs".
  The TERMINAL panel names your terminal and says whether graphs will be
  pixels or text. If the command is not found, open a new terminal or run
  ~/.local/bin/netzilla.
@@ -1388,8 +1388,8 @@ a terminal (Ctrl+Alt+T opens one on both).
  ------------------------------
  Press F2 (SETTINGS) and press TEST KEYS. Each service should report WORKING.
  This makes one real call per service; the GreyNoise one counts as 1 of its
- 50 weekly lookups. (If this copy has no bundled keys, TEST KEYS has nothing
- to check yet — add your own on SETTINGS first; see section 4.)
+ 50 weekly lookups. (netzilla ships with no keys, so TEST KEYS has nothing
+ to check until you add your own on SETTINGS; see section 4.)
 
 
 -------------------------------- 3b. macOS --------------------------------
@@ -1451,8 +1451,8 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
 
  STEP 5 — Add your own API keys
  ---------------------------------
- A copy sent by a friend normally has no bundled keys (see section 4). Press
- F2 (SETTINGS), type each key into its box, SAVE SETTINGS, then TEST KEYS.
+ netzilla ships with no API keys (see section 4). Press F2 (SETTINGS), type
+ each key into its box, SAVE SETTINGS, then TEST KEYS.
  Every tab works keyless except the reputation panels on IP LOOKUP, THREAT
  and IOC LOOKUP, which read "not configured" until you add a key.
 
@@ -1594,34 +1594,28 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
  4. API KEYS
 -------------------------------------------------------------------------------
 
+ netzilla ships with no API keys. Every key it uses is one you add yourself,
+ and it stays on your machine.
+
  How netzilla picks which key to use (first match wins)
  ------------------------------------------------------
    1. Environment variable      NETZILLA_ABUSEIPDB_API_KEY=...
    2. Your own saved key        ~/.config/netzilla/config.toml
-   3. Bundled default           netzilla/data/default_credentials.toml
-
- Only keys that differ from the default are written to config.toml, so that
- file always shows exactly what you have overridden.
 
 
- Changing a key
- --------------
-   F2 -> type the new key into its box -> SAVE SETTINGS
+ Adding or changing a key
+ ------------------------
+   F2 -> type the key into its box -> SAVE SETTINGS
    The tag under the box changes to "CUSTOM KEY".
    Press TEST KEYS to confirm it works.
 
- Going back to the default
- -------------------------
-   One key:   clear its box -> SAVE SETTINGS
-   All keys:  RESET TO DEFAULTS
-
- Running without the bundled keys (useful to check a clean setup)
- ----------------------------------------------------------------
-     netzilla --no-default-keys
+ Removing a key
+ --------------
+   Clear its box -> SAVE SETTINGS
 
 
- Keys pre-loaded in this copy
- ----------------------------
+ The four free-account keys
+ --------------------------
    AbuseIPDB API Key            free: 1,000 checks/day, 100 /24 block
                                 checks/day. Sent as the "Key" header.
    VirusTotal API Key           free: 4 requests/min, 500/day. Sent as
@@ -1658,21 +1652,23 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
  labels it [SHARED SECRET] to keep the distinction visible.
 
 
- BEFORE YOU SHARE NETZILLA
- -------------------------
- Strip the keys from the source folder before zipping it for anyone:
+ SHARING NETZILLA
+ ----------------
+ There are no keys to strip first. Your own keys typed on SETTINGS live only
+ in ~/.config/netzilla/config.toml (mode 0600), never in the netzilla folder,
+ so a copy of the folder is safe to pass along as it is.
 
-     cd ~/Downloads/netzilla
-     rm src/netzilla/data/default_credentials.toml
-     cd .. && tar -czf netzilla-shareable.tar.gz netzilla
+ Older copies of netzilla could carry keys in a bundled file,
+ src/netzilla/data/default_credentials.toml. netzilla no longer reads or
+ installs that file, and .gitignore keeps it out of git. Delete it from any
+ old folder or install you still have, for example:
 
- netzilla runs fine without that file — the recipient adds their own keys on
- SETTINGS. To remove the keys from your own installed copy too:
-
+     rm -f ~/Downloads/netzilla/src/netzilla/data/default_credentials.toml
      find ~/.local -path '*netzilla/data/default_credentials.toml' -delete
 
- Your own keys typed on SETTINGS live only in ~/.config/netzilla/config.toml
- (mode 0600) and are never part of the archive.
+ Keys that came from that file show as "not set" after upgrading. Type them
+ into SETTINGS and SAVE once; from then on they are kept in your
+ config.toml.
 
 
 -------------------------------------------------------------------------------
@@ -1719,7 +1715,6 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
                                      detect from the environment only
    netzilla --offline                no network calls; local tools and the
                                      URLhaus snapshot keep working
-   netzilla --no-default-keys        ignore the bundled keys
    netzilla --update-oui             download the full IEEE OUI registry
    netzilla --update-urlhaus         refresh the URLhaus snapshot from abuse.ch
    netzilla --import-urlhaus FILE    load a URLhaus dump you downloaded
@@ -1884,7 +1879,6 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
                        lan, config_review and creds; 4.3 adds picking (pick
                        a row of a live list, and show only it)
      data/
-       default_credentials.toml   bundled API keys (see section 4)
        urlhaus_snapshot.csv.gz    offline URLhaus database, 1.4 MB
        bt_numbers.csv.gz          Bluetooth company IDs and service UUIDs
        oui.csv.gz                 the full IEEE registry, all three block
@@ -1997,9 +1991,8 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
      as the window stops changing size.
 
  DASH's API KEYS panel says "not set" for every key after installing
-     The keys file did not make it into the install. Reinstall from the
-     unpacked folder with `pipx install --force .` and check that
-     src/netzilla/data/default_credentials.toml exists before you do.
+     Expected: netzilla ships with no keys. Add your own on SETTINGS (F2)
+     and SAVE; see section 4.
 
  TEST KEYS shows an error for one service
      The message includes the service's own explanation. "Unauthorized" means

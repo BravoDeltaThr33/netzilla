@@ -18,7 +18,6 @@
     netzilla --update-oui          refresh the IEEE OUI table
     netzilla --update-urlhaus      refresh the offline URLhaus snapshot
     netzilla --import-urlhaus F    load a URLhaus dump you downloaded yourself
-    netzilla --no-default-keys     ignore the bundled default API keys
 """
 
 from __future__ import annotations
@@ -95,9 +94,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--import-urlhaus", metavar="FILE",
         help="import a URLhaus dump from disk (.json, .zip or plain-text list) and exit",
     )
+    # netzilla no longer bundles API keys, so there is nothing left to ignore.
+    # The flag is still accepted, and does nothing, so existing scripts and
+    # aliases keep working.
     parser.add_argument(
-        "--no-default-keys", action="store_true",
-        help="ignore the API keys bundled with this copy of netzilla",
+        "--no-default-keys", action="store_true", help=argparse.SUPPRESS,
     )
     parser.add_argument("--version", action="version", version=f"netzilla {__version__}")
     return parser
@@ -154,7 +155,6 @@ def _main(argv: list[str] | None = None) -> int:
         theme_name=args.theme,
         offline=args.offline,
         start_tab=args.tab,
-        use_default_keys=not args.no_default_keys,
         graphics=args.graphics,
     )
     app.run()
@@ -166,7 +166,7 @@ def _terminal_report(args) -> int:
     from . import termcaps
 
     info = termcaps.startup(allow_probe=not args.no_probe)
-    config = Config.load(args.config, use_defaults=False)
+    config = Config.load(args.config)
     setting = args.graphics or config.graphics
     mode = info.graphics_mode(setting)
     cell = f"{info.cell_px[0]} x {info.cell_px[1]} px" if info.cell_px else "not reported"
@@ -195,7 +195,7 @@ def _terminal_report(args) -> int:
 async def _one_shot(args) -> int:
     from .services import Services
 
-    config = Config.load(args.config, use_defaults=not args.no_default_keys)
+    config = Config.load(args.config)
     services = Services(config, offline=args.offline)
     try:
         payload = await _dispatch(services, args.command, args.target or "")
@@ -526,7 +526,7 @@ def _import_urlhaus(path: str) -> int:
 def _update_urlhaus(args) -> int:
     from .local import urlhaus_offline
 
-    config = Config.load(args.config, use_defaults=not args.no_default_keys)
+    config = Config.load(args.config)
     print(f"Downloading {urlhaus_offline.DOWNLOAD_URL} …")
     try:
         count = urlhaus_offline.update_from_abusech(config.credential("abusech_auth_key"))

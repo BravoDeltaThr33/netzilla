@@ -30,7 +30,7 @@ def _app(tmp_path, **kwargs):
     from netzilla.app import NetzillaApp
 
     return NetzillaApp(config_path=tmp_path / "config.toml", offline=True,
-                       use_default_keys=False, **kwargs)
+                       **kwargs)
 
 
 def _text(renderable, width: int = 220) -> str:

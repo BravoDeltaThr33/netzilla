@@ -115,11 +115,10 @@ class NetzillaApp(App):
         theme_name: str | None = None,
         offline: bool = False,
         start_tab: str | None = None,
-        use_default_keys: bool = True,
         graphics: str | None = None,
     ) -> None:
         super().__init__()
-        self.config_obj = Config.load(config_path, use_defaults=use_default_keys)
+        self.config_obj = Config.load(config_path)
         if theme_name:
             self.config_obj.theme = theme_name.strip().lower()
         # Normalise before anything reads it (a hand-edited config may hold junk).
