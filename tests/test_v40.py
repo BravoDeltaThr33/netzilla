@@ -71,7 +71,7 @@ def test_no_client_sends_an_optional_paid_key(tmp_path):
     from netzilla.clients import eosl, outagedeck
     from netzilla.services import Services
 
-    config = Config.load(tmp_path / "c.toml", use_defaults=False)
+    config = Config.load(tmp_path / "c.toml")
     services = Services(config)
     assert outagedeck._headers(services) == {"Accept": "application/json"}
     assert eosl._headers(services) == {"Accept": "application/json"}
@@ -80,7 +80,7 @@ def test_no_client_sends_an_optional_paid_key(tmp_path):
 def test_an_old_config_with_removed_keys_still_loads(tmp_path):
     path = tmp_path / "c.toml"
     path.write_text('[credentials]\nshodan_api_key = "x"\nnvd_api_key = "abc"\n')
-    config = Config.load(path, use_defaults=False)
+    config = Config.load(path)
     assert config.credential("nvd_api_key") == "abc"
     assert "shodan_api_key" not in config.credentials
 
@@ -176,7 +176,7 @@ def test_host_profile_combines_four_free_sources(monkeypatch, tmp_path):
     monkeypatch.setattr(rdap, "ip", reg)
     monkeypatch.setattr(ripestat, "network_info", net)
     monkeypatch.setattr(ripestat, "as_overview", overview)
-    services = Services(Config.load(tmp_path / "c.toml", use_defaults=False))
+    services = Services(Config.load(tmp_path / "c.toml"))
     pane = _discovery({"ip": "1.1.1.1"}, services)
     asyncio.run(pane.execute("profile"))
     shown = pane.text()
@@ -212,7 +212,7 @@ def test_cve_detail_ranks_by_kev_then_epss(monkeypatch, tmp_path):
     monkeypatch.setattr(epss, "scores", scores)
     monkeypatch.setattr(kev, "annotate", annotate)
     monkeypatch.setattr(nvd, "get_cve", get_cve)
-    services = Services(Config.load(tmp_path / "c.toml", use_defaults=False))
+    services = Services(Config.load(tmp_path / "c.toml"))
     pane = _discovery({"ip": "192.0.2.1"}, services)
     asyncio.run(pane.execute("cves"))
     shown = pane.text()
@@ -298,7 +298,7 @@ def test_lifecycle_software_eol(monkeypatch, tmp_path):
 
     monkeypatch.setattr(endoflife, "products", products)
     monkeypatch.setattr(endoflife, "product", product)
-    services = Services(Config.load(tmp_path / "c.toml", use_defaults=False))
+    services = Services(Config.load(tmp_path / "c.toml"))
 
     class Pane(_Recorder, LifecyclePane):
         def __init__(self, fields):
@@ -683,7 +683,7 @@ def _app(tmp_path, **kwargs):
     from netzilla.app import NetzillaApp
 
     return NetzillaApp(config_path=tmp_path / "config.toml", offline=True,
-                       use_default_keys=False, **kwargs)
+                       **kwargs)
 
 
 def test_only_the_opening_tab_is_built_at_start(tmp_path):
@@ -1093,16 +1093,16 @@ def test_pixel_graphs_need_truecolour_output(tmp_path):
 
 def test_graphics_setting_round_trip(tmp_path):
     path = tmp_path / "c.toml"
-    config = Config.load(path, use_defaults=False)
+    config = Config.load(path)
     assert config.graphics == "auto" and config.notify is True
     config.graphics, config.notify = "text", False
     config.save()
-    again = Config.load(path, use_defaults=False)
+    again = Config.load(path)
     assert again.graphics == "text" and again.notify is False
     path.write_text('[display]\ngraphics = "PIXEL"\n')
-    assert Config.load(path, use_defaults=False).graphics == "pixel"
+    assert Config.load(path).graphics == "pixel"
     path.write_text('[display]\ngraphics = "sparkles"\n')
-    assert Config.load(path, use_defaults=False).graphics == "auto"
+    assert Config.load(path).graphics == "auto"
 
 
 def test_stale_user_agent_is_replaced(tmp_path):
@@ -1110,12 +1110,12 @@ def test_stale_user_agent_is_replaced(tmp_path):
 
     path = tmp_path / "c.toml"
     path.write_text('[general]\nuser_agent = "netzilla/2.0 (+https://github.com/)"\n')
-    config = Config.load(path, use_defaults=False)
+    config = Config.load(path)
     assert config.user_agent == DEFAULT_USER_AGENT and __version__ in DEFAULT_USER_AGENT
     config.save()
     assert "user_agent" not in path.read_text()
     path.write_text('[general]\nuser_agent = "my-agent/1.0"\n')
-    assert Config.load(path, use_defaults=False).user_agent == "my-agent/1.0"
+    assert Config.load(path).user_agent == "my-agent/1.0"
 
 
 def test_settings_graphics_select_applies_and_persists(tmp_path):
@@ -1135,7 +1135,7 @@ def test_settings_graphics_select_applies_and_persists(tmp_path):
             assert "graphs drawn as TEXT" in note.replace("\n", " ") or "TEXT" in note
 
     asyncio.run(go())
-    assert Config.load(tmp_path / "config.toml", use_defaults=False).graphics == "text"
+    assert Config.load(tmp_path / "config.toml").graphics == "text"
 
 
 def test_headless_never_writes_images(tmp_path):
@@ -1328,7 +1328,7 @@ def test_all_records_falls_back_to_dns_over_https(tmp_path, monkeypatch):
 
     monkeypatch.setattr(dns_whois, "all_records", no_dig)
     monkeypatch.setattr(doh, "resolve_many", answers)
-    services = Services(Config.load(tmp_path / "c.toml", use_defaults=False))
+    services = Services(Config.load(tmp_path / "c.toml"))
 
     class Pane(_Recorder, DNSWhoisPane):
         def __init__(self, fields):

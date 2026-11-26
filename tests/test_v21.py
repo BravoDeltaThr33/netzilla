@@ -143,7 +143,6 @@ def _app(tmp_path) -> NetzillaApp:
         config_path=tmp_path / "config.toml",
         offline=True,
         start_tab="subnet",
-        use_default_keys=False,
     )
 
 

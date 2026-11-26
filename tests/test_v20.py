@@ -24,7 +24,7 @@ from netzilla.services import Services
 
 
 def make_services(tmp_path, handler) -> Services:
-    services = Services(Config(path=tmp_path / "config.toml", defaults={"abusech_auth_key": "k"}))
+    services = Services(Config(path=tmp_path / "config.toml", credentials={"abusech_auth_key": "k"}))
     services._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     return services
 

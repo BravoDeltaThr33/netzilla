@@ -249,8 +249,7 @@ def test_settings_no_longer_offers_a_history_graph_style(tmp_path):
     from netzilla.app import NetzillaApp
 
     async def go():
-        app = NetzillaApp(config_path=tmp_path / "c.toml", offline=True,
-                          use_default_keys=False)
+        app = NetzillaApp(config_path=tmp_path / "c.toml", offline=True)
         async with app.run_test(size=(200, 60)) as pilot:
             app.query_one("#tabs", TabbedContent).active = "settings"
             await pilot.pause()

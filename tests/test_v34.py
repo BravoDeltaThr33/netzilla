@@ -385,8 +385,7 @@ def test_every_tab_still_fits_its_fields_on_a_wide_terminal(tmp_path):
     from netzilla.app import TABS, NetzillaApp
 
     async def go():
-        app = NetzillaApp(config_path=tmp_path / "c.toml", offline=True,
-                          use_default_keys=False)
+        app = NetzillaApp(config_path=tmp_path / "c.toml", offline=True)
         async with app.run_test(size=(200, 60)) as pilot:
             tabs = app.query_one("#tabs", TabbedContent)
             for tab_id, _label, pane_class in TABS:

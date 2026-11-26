@@ -85,7 +85,7 @@ def test_hidden_ssids_are_not_read_from_the_next_line():
 def test_an_old_graphs_setting_is_ignored(tmp_path):
     path = tmp_path / "config.toml"
     path.write_text('[theme]\nname = "amber-phosphor"\ngraphs = "sextant"\n')
-    config = Config.load(path, use_defaults=False)
+    config = Config.load(path)
     assert config.theme == "amber-phosphor"
     config.save()
     assert "graphs" not in path.read_text()
@@ -184,8 +184,7 @@ def test_the_graph_is_outlined_too():
 def _app(tmp_path):
     from netzilla.app import NetzillaApp
 
-    return NetzillaApp(config_path=tmp_path / "config.toml", offline=True,
-                       use_default_keys=False)
+    return NetzillaApp(config_path=tmp_path / "config.toml", offline=True)
 
 
 def test_every_tab_rolls_its_controls_up_and_back_down(tmp_path):

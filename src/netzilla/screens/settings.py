@@ -2,15 +2,13 @@
 
 Every credential netzilla can use gets its own input here.
 
-This copy of netzilla ships with bundled default keys for AbuseIPDB,
-VirusTotal, GreyNoise and abuse.ch (data/default_credentials.toml), so those
-fields arrive pre-filled. They stay fully editable:
+netzilla ships with no keys, so every field starts empty:
 
-  * type a different key and SAVE  -> it becomes a CUSTOM override in
+  * type a key and SAVE            -> it is saved to
                                       ~/.config/netzilla/config.toml
-  * clear a field and SAVE         -> that field falls back to the default
-  * RESET TO DEFAULTS              -> every override is removed
-  * NETZILLA_<KEY> env variables   -> win over both, and are labelled as such
+  * clear a field and SAVE         -> that key is removed
+  * NETZILLA_<KEY> env variables   -> win over a saved key, and are labelled
+                                      as such
 
 Every service netzilla uses is free: the four keys are free accounts, and
 the one optional key (NVD) only raises a rate limit. Nothing needs a paid
@@ -46,7 +44,6 @@ GRAPHICS_LABELS = {
 SOURCE_LABELS = {
     "env": ("● ENVIRONMENT VARIABLE — overrides this field", "accent"),
     "custom": ("● CUSTOM KEY — your own saved value", "success"),
-    "default": ("● BUNDLED DEFAULT — shipped with netzilla", "primary"),
     "none": ("○ NOT SET", "warning"),
 }
 
@@ -77,7 +74,6 @@ class SettingsPane(CollapsibleControls, Vertical):
                 yield Button("SAVE SETTINGS", id="act-save", classes="action primary")
                 yield Button("TEST KEYS", id="act-test", classes="action")
                 yield Button("SHOW / HIDE KEYS", id="act-reveal", classes="action")
-                yield Button("RESET TO DEFAULTS", id="act-reset", classes="action")
                 yield Button("CLEAR CACHE", id="act-clear", classes="action")
             yield Static("", id="settings-feedback", classes="toast-ok")
 
@@ -172,7 +168,6 @@ class SettingsPane(CollapsibleControls, Vertical):
                     yield Static("", id="settings-status", classes="result-panel")
 
     def _credential_row(self, spec):
-        config = self.app.services.config
         holder = Vertical(classes="cred-row")
         with holder:
             tag = "SHARED SECRET" if spec.kind == "shared_secret" else "API KEY"
@@ -181,11 +176,7 @@ class SettingsPane(CollapsibleControls, Vertical):
                 yield Static("", id=f"src-{spec.key}", classes="cred-source")
             yield Input(
                 value=self._field_value(spec.key),
-                placeholder=(
-                    f"blank = use the bundled default {spec.service} key"
-                    if config.has_default(spec.key)
-                    else f"paste your {spec.service} credential here"
-                ),
+                placeholder=f"paste your {spec.service} credential here",
                 password=True,
                 id=f"cred-{spec.key}",
                 classes="cred-input",
@@ -196,13 +187,12 @@ class SettingsPane(CollapsibleControls, Vertical):
             yield Static(note, classes="cred-note")
 
     def _field_value(self, key: str) -> str:
-        """What the input box should show: the override, else the default.
+        """What the input box should show: the saved key, if any.
 
         An environment variable is deliberately NOT copied into the box — it
         would then be written to disk on the next SAVE.
         """
-        config = self.app.services.config
-        return config.credentials.get(key) or config.defaults.get(key, "")
+        return self.app.services.config.credentials.get(key, "")
 
     # ------------------------------------------------------------- events
     def on_mount(self) -> None:
@@ -252,7 +242,6 @@ class SettingsPane(CollapsibleControls, Vertical):
         for spec in CREDENTIAL_FIELDS:
             source = config.credential_source(spec.key)
             word, colour = {
-                "default": ("bundled default", "primary"),
                 "custom": ("your own key", "success"),
                 "env": ("environment variable", "accent"),
                 "none": ("not set" + ("" if spec.required else " (optional)"),
@@ -324,8 +313,6 @@ class SettingsPane(CollapsibleControls, Vertical):
             self._save()
         elif button_id == "act-reveal":
             self._toggle_reveal()
-        elif button_id == "act-reset":
-            self._reset_to_defaults()
         elif button_id == "act-clear":
             removed = self.app.services.store.clear_cache()
             self._say(f"Cache cleared — {removed} stored responses removed.")
@@ -384,18 +371,6 @@ class SettingsPane(CollapsibleControls, Vertical):
         self.app.services.store.enabled = config.cache_enabled
         self._refill_inputs()
         self._refresh_states(prefix=f"Saved to {_short_path(config.path)}. ")
-        self._status_panel()
-
-    def _reset_to_defaults(self) -> None:
-        config = self.app.services.config
-        config.reset_all_credentials()
-        try:
-            config.save()
-        except OSError as exc:
-            self._say(f"Could not write {config.path}: {exc}", ok=False)
-            return
-        self._refill_inputs()
-        self._refresh_states(prefix="Every key reset to its bundled default. ")
         self._status_panel()
 
     def _refill_inputs(self) -> None:

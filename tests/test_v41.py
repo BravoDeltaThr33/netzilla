@@ -44,7 +44,7 @@ def _app(tmp_path, **kwargs):
     from netzilla.app import NetzillaApp
 
     return NetzillaApp(config_path=tmp_path / "config.toml", offline=True,
-                       use_default_keys=False, **kwargs)
+                       **kwargs)
 
 
 def test_version_is_4_1():
@@ -152,7 +152,7 @@ def test_quota_rows_on_dash_skip_unused_unlimited_services(tmp_path):
     from netzilla.config import Config
     from netzilla.services import Services
 
-    services = Services(Config.load(tmp_path / "c.toml", use_defaults=False))
+    services = Services(Config.load(tmp_path / "c.toml"))
     every = services.quota_rows()
     active = services.quota_rows(active_only=True)
     assert len(active) < len(every)

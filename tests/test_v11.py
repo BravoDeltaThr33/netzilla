@@ -1,4 +1,4 @@
-"""Tests for netzilla 1.1: bundled default keys, the offline URLhaus snapshot,
+"""Tests for netzilla 1.1: API key handling, the offline URLhaus snapshot,
 and client behaviour against the response shapes in each vendor's docs.
 
 HTTP is served by httpx.MockTransport — nothing here touches the network and
@@ -16,30 +16,36 @@ import gzip
 import io
 import json
 import zipfile
+from pathlib import Path
 from urllib.parse import parse_qs
 
 import httpx
 import pytest
 
+from netzilla import config as config_module
 from netzilla.clients import abuseipdb, greynoise, urlhaus, virustotal
-from netzilla.config import (
-    BUNDLED_DEFAULTS_PATH, CREDENTIAL_KEYS, Config, load_bundled_defaults,
-)
+from netzilla.config import CREDENTIAL_KEYS, Config
 from netzilla.local import urlhaus_offline
 from netzilla.services import Services
 
+if sys.version_info >= (3, 11):
+    import tomllib
+else:  # pragma: no cover - 3.10 fallback
+    import tomli as tomllib
 
-DEFAULTS = {
-    "abuseipdb_api_key": "default-abuse",
-    "virustotal_api_key": "default-vt",
-    "greynoise_api_key": "default-gn",
-    "abusech_auth_key": "default-abusech",
+
+# Dummy keys, stored the way a user's own saved keys are.
+TEST_KEYS = {
+    "abuseipdb_api_key": "test-abuse",
+    "virustotal_api_key": "test-vt",
+    "greynoise_api_key": "test-gn",
+    "abusech_auth_key": "test-abusech",
 }
 
 
-def make_services(tmp_path, handler, *, offline=False, defaults=None) -> Services:
+def make_services(tmp_path, handler, *, offline=False, keys=None) -> Services:
     config = Config(path=tmp_path / "config.toml")
-    config.defaults = dict(DEFAULTS if defaults is None else defaults)
+    config.credentials = dict(TEST_KEYS if keys is None else keys)
     services = Services(config, offline=offline)
     services._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     return services
@@ -49,35 +55,58 @@ def run(coro):
     return asyncio.run(coro)
 
 
-# ------------------------------------------------------ bundled defaults
-@pytest.mark.skipif(
-    not BUNDLED_DEFAULTS_PATH.exists(),
-    reason="this copy has had its API keys stripped for sharing (README, section 4)",
-)
-def test_bundled_defaults_file_ships_the_four_keys():
-    defaults = load_bundled_defaults()
-    assert BUNDLED_DEFAULTS_PATH.exists()
-    for key in ("abuseipdb_api_key", "virustotal_api_key",
-                "greynoise_api_key", "abusech_auth_key"):
-        assert defaults.get(key), f"{key} missing from the bundled defaults"
-    assert set(defaults) <= set(CREDENTIAL_KEYS)
+def _no_key_env(monkeypatch):
+    for key in CREDENTIAL_KEYS:
+        monkeypatch.delenv(f"NETZILLA_{key.upper()}", raising=False)
 
 
-def test_missing_defaults_file_means_no_defaults(tmp_path):
-    assert load_bundled_defaults(tmp_path / "nope.toml") == {}
+# -------------------------------------------------------------- API keys
+def test_netzilla_ships_no_keys(tmp_path, monkeypatch):
+    _no_key_env(monkeypatch)
+    config = Config.load(tmp_path / "config.toml")
+    for key in CREDENTIAL_KEYS:
+        assert config.credential(key) == ""
+        assert config.credential_source(key) == "none"
 
 
-def test_no_default_keys_switch(tmp_path):
-    config = Config.load(tmp_path / "config.toml", use_defaults=False)
-    assert config.credential_source("abuseipdb_api_key") == "none"
+def test_a_leftover_bundled_keys_file_is_ignored(tmp_path, monkeypatch):
+    """Copies before this change read keys from data/default_credentials.toml.
+    netzilla must never read that file again, so a stale copy of it cannot
+    pass anyone's keys along. If the file is already there it is left alone."""
+    _no_key_env(monkeypatch)
+    stale = Path(config_module.__file__).resolve().parent / "data" / "default_credentials.toml"
+    created = False
+    if not stale.exists():
+        try:
+            stale.write_text('[credentials]\nabuseipdb_api_key = "leftover"\n',
+                             encoding="utf-8")
+        except OSError:
+            pytest.skip("the package directory is read-only")
+        created = True
+    try:
+        config = Config.load(tmp_path / "config.toml")
+        for key in CREDENTIAL_KEYS:
+            assert config.credential_source(key) == "none"
+    finally:
+        if created:
+            stale.unlink()
 
 
-def test_precedence_default_then_custom_then_env(tmp_path, monkeypatch):
+def test_package_data_never_includes_a_keys_file():
+    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    if not pyproject.exists():
+        pytest.skip("pyproject.toml is not next to the tests")
+    with pyproject.open("rb") as handle:
+        data = tomllib.load(handle)
+    patterns = data["tool"]["setuptools"]["package-data"]["netzilla"]
+    assert not [p for p in patterns if p.endswith(".toml")], patterns
+
+
+def test_precedence_saved_key_then_env(tmp_path, monkeypatch):
     monkeypatch.delenv("NETZILLA_ABUSEIPDB_API_KEY", raising=False)
-    config = Config(path=tmp_path / "config.toml", defaults=dict(DEFAULTS))
-
-    assert config.credential("abuseipdb_api_key") == "default-abuse"
-    assert config.credential_source("abuseipdb_api_key") == "default"
+    config = Config(path=tmp_path / "config.toml")
+    assert config.credential("abuseipdb_api_key") == ""
+    assert config.credential_source("abuseipdb_api_key") == "none"
 
     config.set_credential("abuseipdb_api_key", "mine")
     assert config.credential("abuseipdb_api_key") == "mine"
@@ -88,45 +117,43 @@ def test_precedence_default_then_custom_then_env(tmp_path, monkeypatch):
     assert config.credential_source("abuseipdb_api_key") == "env"
 
 
-def test_blank_or_default_value_is_not_an_override(tmp_path):
-    config = Config(path=tmp_path / "config.toml", defaults=dict(DEFAULTS))
+def test_blank_value_clears_a_saved_key(tmp_path, monkeypatch):
+    monkeypatch.delenv("NETZILLA_VIRUSTOTAL_API_KEY", raising=False)
+    config = Config(path=tmp_path / "config.toml")
     config.set_credential("virustotal_api_key", "custom")
-    config.set_credential("virustotal_api_key", "")
-    assert config.credential("virustotal_api_key") == "default-vt"
-
-    config.set_credential("virustotal_api_key", "default-vt")
+    config.set_credential("virustotal_api_key", "  ")
     assert "virustotal_api_key" not in config.credentials
+    assert config.credential("virustotal_api_key") == ""
 
 
-def test_only_overrides_are_written_to_disk(tmp_path):
+def test_saved_keys_round_trip_through_config_toml(tmp_path, monkeypatch):
+    _no_key_env(monkeypatch)
     path = tmp_path / "config.toml"
-    config = Config(path=path, defaults=dict(DEFAULTS))
+    config = Config(path=path)
     config.set_credential("greynoise_api_key", "my-own-gn")
     config.save()
 
-    text = path.read_text()
-    assert "my-own-gn" in text
-    assert "default-abuse" not in text  # defaults never copied into the file
-
-    reloaded = Config.load(path, defaults_path=tmp_path / "none.toml")
-    reloaded.defaults = dict(DEFAULTS)
+    assert "my-own-gn" in path.read_text()
+    reloaded = Config.load(path)
     assert reloaded.credential("greynoise_api_key") == "my-own-gn"
-    assert reloaded.credential("abuseipdb_api_key") == "default-abuse"
+    assert reloaded.credential_source("abuseipdb_api_key") == "none"
 
 
-def test_reset_to_defaults(tmp_path):
-    config = Config(path=tmp_path / "config.toml", defaults=dict(DEFAULTS))
+def test_reset_all_credentials_clears_every_saved_key(tmp_path, monkeypatch):
+    _no_key_env(monkeypatch)
+    config = Config(path=tmp_path / "config.toml")
     config.set_credential("abuseipdb_api_key", "custom")
     config.reset_all_credentials()
-    assert config.credential_source("abuseipdb_api_key") == "default"
+    assert config.credential_source("abuseipdb_api_key") == "none"
 
 
-def test_v10_config_with_blank_keys_does_not_mask_defaults(tmp_path):
+def test_v10_config_with_blank_keys_loads_as_not_set(tmp_path, monkeypatch):
+    monkeypatch.delenv("NETZILLA_ABUSEIPDB_API_KEY", raising=False)
     path = tmp_path / "config.toml"
     path.write_text('[credentials]\nabuseipdb_api_key = ""\n')
     config = Config.load(path)
-    config.defaults = dict(DEFAULTS)
-    assert config.credential("abuseipdb_api_key") == "default-abuse"
+    assert "abuseipdb_api_key" not in config.credentials
+    assert config.credential_source("abuseipdb_api_key") == "none"
 
 
 # ------------------------------------------------------------- abuseipdb
@@ -166,7 +193,7 @@ def test_abuseipdb_check_uses_header_auth_and_parses(tmp_path):
     services = make_services(tmp_path, handler)
     result = run(abuseipdb.check(services, "118.25.6.39"))
     assert result.ok
-    assert seen == {"key": "default-abuse", "accept": "application/json",
+    assert seen == {"key": "test-abuse", "accept": "application/json",
                     "path": "/api/v2/check", "ip": "118.25.6.39"}
     assert abuseipdb.verdict(result.data)[1] == "bad"
     assert abuseipdb.category_counts(result.data)[0][0] == "Brute-Force"
@@ -257,7 +284,7 @@ def test_greynoise_rejected_key_falls_back_to_anonymous(tmp_path):
 
     services = make_services(tmp_path, handler)
     result = run(greynoise.check(services, "51.91.185.74"))
-    assert keys_sent == ["default-gn", None]
+    assert keys_sent == ["test-gn", None]
     assert result.ok and result.meta["key_rejected"] is True
     assert greynoise.verdict(result.data)[1] == "bad"
 
@@ -291,7 +318,7 @@ def test_virustotal_file_report_by_hash(tmp_path):
     sha256 = "a" * 64
 
     def handler(request):
-        assert request.headers.get("x-apikey") == "default-vt"
+        assert request.headers.get("x-apikey") == "test-vt"
         assert request.url.path == f"/api/v3/files/{sha256}"
         return httpx.Response(200, json={"data": {"attributes": {
             "last_analysis_stats": {"malicious": 41, "undetected": 20, "harmless": 0},
@@ -333,7 +360,7 @@ def test_urlhaus_live_sends_auth_key_and_form(tmp_path):
     services = make_services(tmp_path, handler)
     result = run(urlhaus.check_host(services, "Bad.Example"))
     assert result.ok and result.data["source"] == "live"
-    assert seen == {"auth": "default-abusech", "form": {"host": ["bad.example"]}}
+    assert seen == {"auth": "test-abusech", "form": {"host": ["bad.example"]}}
 
 
 def test_urlhaus_falls_back_to_snapshot_when_api_fails(tmp_path):

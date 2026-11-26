@@ -3,15 +3,16 @@
 Stored as TOML at ~/.config/netzilla/config.toml with 0600 permissions.
 The Settings tab reads and writes this file directly.
 
-Credentials resolve in three layers, highest first:
+Credentials resolve in two layers, highest first:
 
   1. NETZILLA_<KEY> environment variables
   2. values the user saved on the SETTINGS tab (config.toml)
-  3. bundled defaults shipped in data/default_credentials.toml
 
-Only values that differ from the bundled default are written to config.toml,
-so a user override is always explicit and "RESET TO DEFAULTS" is a clean
-delete rather than a copy.
+netzilla ships with no credentials of its own. Every key comes from the
+person running it and stays in their config.toml, outside the package, so
+no copy of netzilla can pass anyone's keys along. (Older copies also read
+keys from data/default_credentials.toml; that file is no longer read or
+packaged.)
 """
 
 from __future__ import annotations
@@ -36,7 +37,6 @@ DEFAULT_CONFIG_DIR = Path(
 ) / "netzilla"
 DEFAULT_CONFIG_PATH = DEFAULT_CONFIG_DIR / "config.toml"
 DEFAULT_CACHE_PATH = DEFAULT_CONFIG_DIR / "cache.sqlite3"
-BUNDLED_DEFAULTS_PATH = Path(__file__).resolve().parent / "data" / "default_credentials.toml"
 
 # Sent with every API request. Versions before 4.0 wrote their own default
 # ("netzilla/2.0 …") into config.toml, so a saved value that is merely an old
@@ -49,28 +49,6 @@ _OLD_DEFAULT_AGENT = re.compile(r"^netzilla/\d+(\.\d+)* \(\+https://github\.com/
 # show them (kitty, Ghostty) and text everywhere else; "pixel" and "text"
 # force one or the other.
 GRAPHICS_MODES = ("auto", "pixel", "text")
-
-
-def load_bundled_defaults(path: Path | None = None) -> dict[str, str]:
-    """Read the credentials shipped with this copy of netzilla.
-
-    A missing or malformed file simply means "no defaults" — that is the
-    expected state for a copy that has been stripped before sharing.
-    """
-    source = path or BUNDLED_DEFAULTS_PATH
-    try:
-        with source.open("rb") as handle:
-            raw = tomllib.load(handle)
-    except (OSError, ValueError):
-        return {}
-    creds = raw.get("credentials", {})
-    if not isinstance(creds, dict):
-        return {}
-    return {
-        k: str(v).strip()
-        for k, v in creds.items()
-        if k in CREDENTIAL_KEYS and str(v).strip()
-    }
 
 
 @dataclass(frozen=True)
@@ -155,10 +133,8 @@ class Config:
 
     path: Path = DEFAULT_CONFIG_PATH
     theme: str = DEFAULT_THEME
-    # User overrides only — values saved on the SETTINGS tab.
+    # Keys the user saved on the SETTINGS tab.
     credentials: dict[str, str] = field(default_factory=dict)
-    # Bundled defaults from data/default_credentials.toml.
-    defaults: dict[str, str] = field(default_factory=dict)
     timeout_seconds: float = 12.0
     cache_enabled: bool = True
     user_agent: str = DEFAULT_USER_AGENT
@@ -168,16 +144,9 @@ class Config:
 
     # ---------------------------------------------------------------- load
     @classmethod
-    def load(
-        cls,
-        path: Path | str | None = None,
-        defaults_path: Path | None = None,
-        use_defaults: bool = True,
-    ) -> "Config":
+    def load(cls, path: Path | str | None = None) -> "Config":
         cfg_path = Path(path) if path else DEFAULT_CONFIG_PATH
         cfg = cls(path=cfg_path)
-        if use_defaults:
-            cfg.defaults = load_bundled_defaults(defaults_path)
         if not cfg_path.exists():
             return cfg
         try:
@@ -195,8 +164,7 @@ class Config:
 
         creds = raw.get("credentials", {})
         if isinstance(creds, dict):
-            # Empty strings mean "no override" and are dropped, so a blank
-            # line left by v1.0 does not mask a bundled default.
+            # Empty strings mean "not set" and are dropped.
             cfg.credentials = {
                 k: str(v).strip()
                 for k, v in creds.items()
@@ -226,16 +194,10 @@ class Config:
     # ---------------------------------------------------------------- save
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        # Only genuine overrides are persisted. A value equal to the bundled
-        # default is not an override and is left out on purpose.
-        overrides = {
-            k: v
-            for k, v in self.credentials.items()
-            if v and v != self.defaults.get(k)
-        }
+        saved = {k: v for k, v in self.credentials.items() if v}
         payload = {
             "theme": {"name": self.theme},
-            "credentials": overrides,
+            "credentials": saved,
             "general": {
                 "timeout_seconds": self.timeout_seconds,
                 "cache_enabled": self.cache_enabled,
@@ -257,42 +219,33 @@ class Config:
 
     # ----------------------------------------------------------- accessors
     def credential(self, key: str) -> str:
-        """Effective value: env var, then user override, then bundled default."""
+        """Effective value: env var, then the user's saved key."""
         env = os.environ.get(f"NETZILLA_{key.upper()}")
         if env and env.strip():
             return env.strip()
-        user = (self.credentials.get(key) or "").strip()
-        if user:
-            return user
-        return (self.defaults.get(key) or "").strip()
+        return (self.credentials.get(key) or "").strip()
 
     def credential_source(self, key: str) -> str:
-        """Where the effective value comes from: env | custom | default | none."""
+        """Where the effective value comes from: env | custom | none."""
         env = os.environ.get(f"NETZILLA_{key.upper()}")
         if env and env.strip():
             return "env"
-        user = (self.credentials.get(key) or "").strip()
-        if user and user != self.defaults.get(key):
+        if (self.credentials.get(key) or "").strip():
             return "custom"
-        if self.defaults.get(key) or user:
-            return "default"
         return "none"
 
     def has(self, key: str) -> bool:
         return bool(self.credential(key))
 
-    def has_default(self, key: str) -> bool:
-        return bool(self.defaults.get(key))
-
     def set_credential(self, key: str, value: str) -> None:
-        """Store an override. Blank, or equal to the default, clears it."""
+        """Save a key. Blank clears it."""
         if key not in CREDENTIAL_KEYS:
             return
         value = (value or "").strip()
-        if not value or value == self.defaults.get(key):
-            self.credentials.pop(key, None)
-        else:
+        if value:
             self.credentials[key] = value
+        else:
+            self.credentials.pop(key, None)
 
     def reset_credential(self, key: str) -> None:
         self.credentials.pop(key, None)
