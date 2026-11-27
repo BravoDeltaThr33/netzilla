@@ -90,7 +90,7 @@ class Entry:
 class Snapshot:
     """The loaded snapshot. Its counts are ready at once; the URL and host
     indexes (two URL parses per entry) are built on the first lookup, so the
-    DASH tab's "56,366 URLs, newest …" line costs almost nothing."""
+    DASH tab's "56,193 URLs, newest …" line costs almost nothing."""
 
     def __init__(self, entries: list[Entry], path: Path | None) -> None:
         self.path = path

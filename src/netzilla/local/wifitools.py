@@ -24,10 +24,16 @@ netscanner itself runs as root and speaks raw sockets. netzilla gets the same
 answers without root wherever it can (nmcli, iw link, ping, the neighbour
 table, TCP connect, /proc, ss) and only needs privilege to capture packets,
 through the same one-time session the CAPTURE tab uses.
+
+Windows reads its link from the Wi-Fi API (wlanapi.py; netsh as the
+fallback) and its addresses from the adapter table; macOS from `airport -I`
+where that still works, otherwise system_profiler, and ifconfig. Neither
+reports retries or missed beacons, so those rows are left out there.
 """
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import ipaddress
 import math
@@ -35,7 +41,8 @@ import re
 import time
 from pathlib import Path
 
-from . import devices, netif, wifi
+from .. import hostos
+from . import devices, netif, wifi, wlanapi
 from .runner import have, run
 
 
@@ -156,6 +163,10 @@ async def link_info(iface: str) -> dict:
                   "device": {}, "sources": []}
     if not iface:
         return info
+    if hostos.is_windows():
+        return await _link_info_windows(iface, info)
+    if hostos.is_macos():
+        return await _link_info_macos(iface, info)
     if have("iw"):
         link = await run(["iw", "dev", iface, "link"], timeout=8, ok_returncodes=(0, 1))
         info["link"] = parse_iw_link(link.output)
@@ -176,11 +187,248 @@ async def link_info(iface: str) -> dict:
 async def link_now(iface: str) -> dict:
     """Just `iw dev <if> link` — the signal of the AP you're joined to, as the
     driver has it right now. One quick command, for views that read it every
-    tick."""
-    if not iface or not have("iw"):
+    tick (Windows: one call to the Wi-Fi API; macOS: `airport -I`, where the
+    release still has it)."""
+    if not iface:
+        return {"connected": False}
+    if hostos.is_windows():
+        link, entry, _error = await asyncio.to_thread(wlanapi.connection, iface)
+        return windows_link(link, entry)
+    if hostos.is_macos():
+        if not wifi.airport_usable():
+            return {"connected": False}
+        result = await run([wifi.AIRPORT, "-I"], timeout=5, ok_returncodes=(0, 1))
+        link = parse_airport_info(result.output)
+        wifi.note_airport(f"{result.output}\n{result.error}", len(link) > 1)
+        return link
+    if not have("iw"):
         return {"connected": False}
     result = await run(["iw", "dev", iface, "link"], timeout=5, ok_returncodes=(0, 1))
     return parse_iw_link(result.output)
+
+
+def live_link_available() -> bool:
+    """Whether link_now() can read the joined network's signal on this
+    system, quickly enough to do it on every tick of a live view."""
+    if hostos.is_windows():
+        return wlanapi.available()
+    if hostos.is_macos():
+        return wifi.airport_usable()
+    return have("iw")
+
+
+def link_sources_note() -> str:
+    """LINK HEALTH's subtitle: where its numbers come from here."""
+    if hostos.is_windows():
+        return "Windows Wi-Fi API for signal and bitrate · adapter table for addresses and DNS"
+    if hostos.is_macos():
+        return "system_profiler (or airport) for signal and rate · ifconfig for addresses"
+    return "iw for dBm, bitrate and retries · nmcli for addresses and DNS"
+
+
+# ------------------------------------------------------- Windows' link
+def windows_link(link: dict, entry: dict | None = None) -> dict:
+    """wlanapi.connection()'s answer as parse_iw_link()'s: the exact RSSI
+    and frequency come from the access point's own scan entry."""
+    if not link.get("connected"):
+        return {"connected": False}
+    entry = entry or {}
+    freq = int(entry.get("freq_mhz") or 0)
+    channel = int(entry.get("channel") or 0) or (wifi.channel_of(freq) if freq else 0)
+    signal = link.get("rssi")
+    if signal is None:
+        signal = entry.get("rssi")
+    if signal is None and link.get("quality") is not None:
+        signal = wifi.pct_to_dbm(link["quality"])
+    width = entry.get("width_mhz")
+    return {
+        "connected": True,
+        "bssid": (link.get("bssid") or "").lower(),
+        "ssid": link.get("ssid", ""),
+        "freq": freq,
+        "channel": channel,
+        "band": wifi.band_of(freq) if freq else "",
+        "signal_dbm": int(signal) if signal is not None else None,
+        "rx_bitrate": link.get("rx_bitrate"),
+        "tx_bitrate": link.get("tx_bitrate"),
+        "rx_bytes": None,
+        "tx_bytes": None,
+        "width": f"{width} MHz" if width and width > 20 else "",
+        "security": link.get("security", ""),
+        "radio": link.get("phy", ""),
+    }
+
+
+def netsh_link(adapter: dict | None) -> dict:
+    """One adapter from wifi.parse_netsh_interfaces() as a link."""
+    if not adapter or not adapter.get("connected"):
+        return {"connected": False}
+    channel = adapter.get("channel") or 0
+    freq = wifi.freq_for(channel, adapter.get("band", ""))
+    signal = adapter.get("rssi")
+    if signal is None and adapter.get("signal_pct") is not None:
+        signal = wifi.pct_to_dbm(adapter["signal_pct"])
+    return {
+        "connected": True,
+        "bssid": adapter.get("bssid", ""),
+        "ssid": adapter.get("ssid", ""),
+        "freq": freq,
+        "channel": channel,
+        "band": wifi.band_of(freq) if freq else adapter.get("band", ""),
+        "signal_dbm": signal,
+        "rx_bitrate": adapter.get("rx_rate"),
+        "tx_bitrate": adapter.get("tx_rate"),
+        "rx_bytes": None,
+        "tx_bytes": None,
+        "width": "",
+        "security": wifi.netsh_security(adapter.get("auth", ""), adapter.get("cipher", "")),
+        "radio": adapter.get("radio", ""),
+    }
+
+
+def adapter_device(adapter: dict | None, link: dict) -> dict:
+    """An adapter from winapi.adapters() as parse_nmcli_device_show()'s
+    dict: addresses, gateway, DNS, MAC and state."""
+    device: dict = {"ipv4": [], "ipv6": [], "dns": []}
+    if not adapter:
+        return device
+    for address in adapter.get("addresses") or []:
+        (device["ipv6"] if ":" in address else device["ipv4"]).append(address)
+    device["ipv6"].sort(key=lambda a: a.lower().startswith("fe80"))
+    gateways = adapter.get("gateways") or []
+    gateway = next((g for g in gateways if ":" not in g), gateways[0] if gateways else "")
+    if gateway:
+        device["gateway"] = gateway
+    device["dns"] = [d for d in adapter.get("dns") or [] if not d.lower().startswith("fec0:")]
+    if adapter.get("mac"):
+        device["hwaddr"] = adapter["mac"]
+    device["state"] = link.get("state") or ("connected" if link.get("connected")
+                                            else "disconnected")
+    if link.get("profile") or link.get("ssid"):
+        device["connection"] = link.get("profile") or link.get("ssid")
+    return device
+
+
+async def _link_info_windows(iface: str, info: dict) -> dict:
+    from . import winapi
+
+    raw: dict = {}
+    if wlanapi.available():
+        raw, entry, _error = await asyncio.to_thread(wlanapi.connection, iface)
+        info["link"] = windows_link(raw, entry)
+        if info["link"].get("connected") or raw.get("state"):
+            info["sources"].append("Windows Wi-Fi API")
+    if not info["sources"] and have("netsh"):
+        result = await run(["netsh", "wlan", "show", "interfaces"], timeout=10,
+                           ok_returncodes=(0, 1))
+        adapters = wifi.parse_netsh_interfaces(result.output)
+        adapter = next((a for a in adapters if a.get("name") == iface),
+                       adapters[0] if adapters else None)
+        info["link"] = netsh_link(adapter)
+        raw = {"state": (adapter or {}).get("state", ""), "profile": (adapter or {}).get("profile", ""),
+               "connected": info["link"]["connected"]}
+        if adapter:
+            info["sources"].append("netsh")
+    name = ((raw.get("adapter") or {}).get("name")) or iface
+    adapters = await asyncio.to_thread(winapi.adapters) or []
+    adapter = next((a for a in adapters if a.get("name") == name), None)
+    info["device"] = adapter_device(adapter, {**raw, **info["link"],
+                                              "state": raw.get("state", "")})
+    return info
+
+
+# --------------------------------------------------------- macOS' link
+def parse_airport_info(text: str) -> dict:
+    """`airport -I` (macOS 14.3 and earlier) as parse_iw_link()'s dict."""
+    fields: dict[str, str] = {}
+    for line in (text or "").splitlines():
+        key, sep, value = line.partition(":")
+        if sep:
+            fields[key.strip().lower()] = value.strip()
+    bssid = wifi._mac_padded(fields.get("bssid", "")).lower()
+    if fields.get("state") != "running" or not (fields.get("ssid") or bssid):
+        return {"connected": False}
+    channel, width, _centre = wifi.parse_channel_spec(fields.get("channel", ""))
+    freq = wifi.freq_for(channel)
+    rate = _num(fields.get("lasttxrate", ""), float)
+    return {
+        "connected": True,
+        "bssid": bssid,
+        "ssid": fields.get("ssid", ""),
+        "freq": freq,
+        "channel": channel,
+        "band": wifi.band_of(freq) if freq else "",
+        "signal_dbm": _num(fields.get("agrctlrssi", ""), int),
+        "noise_dbm": _num(fields.get("agrctlnoise", ""), int),
+        "rx_bitrate": None,
+        "tx_bitrate": rate,
+        "rx_bytes": None,
+        "tx_bytes": None,
+        "width": f"{width} MHz" if width > 20 else "",
+        "security": wifi.tidy_security(fields.get("link auth", "")),
+    }
+
+
+def macos_link(entry: dict | None) -> dict:
+    """The joined network from wifi.parse_system_profiler() as a link."""
+    current = (entry or {}).get("current")
+    if not current:
+        return {"connected": False}
+    width = current.get("width_mhz") or 20
+    return {
+        "connected": True,
+        "bssid": (current.get("bssid") or "").lower(),
+        "ssid": "" if current.get("ssid") == "<hidden>" else current.get("ssid", ""),
+        "freq": current.get("freq_mhz") or 0,
+        "channel": current.get("channel") or 0,
+        "band": current.get("band") or "",
+        "signal_dbm": current.get("signal_dbm") if current.get("signal_pct") else None,
+        "noise_dbm": current.get("noise_dbm"),
+        "rx_bitrate": None,
+        "tx_bitrate": float(current["rate_mbps"]) if current.get("rate_mbps") else None,
+        "rx_bytes": None,
+        "tx_bytes": None,
+        "width": f"{width} MHz" if width > 20 else "",
+        "security": current.get("security", ""),
+        "radio": current.get("phy", ""),
+    }
+
+
+async def _link_info_macos(iface: str, info: dict) -> dict:
+    link: dict = {"connected": False}
+    if wifi.airport_usable():
+        result = await run([wifi.AIRPORT, "-I"], timeout=8, ok_returncodes=(0, 1))
+        link = parse_airport_info(result.output)
+        wifi.note_airport(f"{result.output}\n{result.error}", len(link) > 1)
+        if link.get("connected"):
+            info["sources"].append("airport")
+    status = ""
+    if not link.get("connected"):
+        entry = await wifi.system_profiler(iface)
+        link = macos_link(entry)
+        status = (entry or {}).get("status", "")
+        if entry is not None:
+            info["sources"].append("system_profiler")
+    info["link"] = link
+    found, _source = await netif.interfaces()
+    mine = next((e for e in found if e.get("name") == iface), None)
+    device: dict = {"ipv4": [], "ipv6": [], "dns": []}
+    if mine:
+        for address in mine.get("addresses") or []:
+            (device["ipv6"] if ":" in address else device["ipv4"]).append(address)
+        if mine.get("mac"):
+            device["hwaddr"] = mine["mac"]
+        route = await netif.macos_default_route()
+        if route.get("interface") == iface and route.get("gateway"):
+            device["gateway"] = route["gateway"]
+        from . import sysinfo
+
+        device["dns"] = sysinfo.dns_servers()[0]
+        device["state"] = "connected" if link.get("connected") else (status or mine.get("state", ""))
+    if link.get("ssid"):
+        device["connection"] = link["ssid"]
+    info["device"] = device
+    return info
 
 
 def link_rows(info: dict, ap: dict | None = None, vendor: str = "") -> list[tuple[str, object]]:

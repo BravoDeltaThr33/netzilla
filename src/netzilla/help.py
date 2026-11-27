@@ -7,7 +7,9 @@ focused, keeps it up while that tool is running, and hides it the moment the
 tool's own output starts to arrive.
 
 Entries are keyed by pane class name, then by action key, so the panes
-themselves stay free of long help strings.
+themselves stay free of long help strings. The table describes Linux; ON_OS
+replaces the parts that read differently on Windows and macOS, chosen when
+a card is shown.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.text import Text
 
+from . import hostos
 from .render import PANEL_BOX
 from .themes import Palette
 
@@ -1502,17 +1505,385 @@ _REFRESH_DEFAULTS = {
     ("LANPane", "dupip"): "1 s between checks",
     ("LANPane", "syslog"): "1 s — the newest messages show live while it listens",
 }
+
+
+def _with_refresh(note: str, default: str) -> str:
+    return ((note + " " if note else "")
+            + f"REFRESH EVERY sets how often it updates, in seconds (blank = {default}).")
+
+
 for (_pane, _key), _default in _REFRESH_DEFAULTS.items():
     _tool = HELP[_pane][_key]
-    HELP[_pane][_key] = replace(
-        _tool,
-        note=(_tool.note + " " if _tool.note else "")
-        + f"REFRESH EVERY sets how often it updates, in seconds (blank = {_default}).",
-    )
+    HELP[_pane][_key] = replace(_tool, note=_with_refresh(_tool.note, _default))
 
 
-def get_help(pane: str, action: str) -> ToolHelp | None:
-    return HELP.get(pane, {}).get(action)
+# What reads differently on Windows and macOS: the fields given here replace
+# the Linux card's (an empty note removes it). A live view's REFRESH EVERY
+# sentence is added back to a replaced note.
+_SYSLOG_SELF_TEST = (
+    "Self-test: set Seconds to 30, click SYSLOG CATCH, then in another terminal:\n"
+    "      {python} -c \"import socket; socket.socket(2, 2).sendto("
+    "b'<14>hello netzilla', ('127.0.0.1', 514))\""
+)
+
+ON_OS: dict[str, dict[tuple[str, str], dict]] = {
+    "windows": {
+        ("DNSWhoisPane", "records"): dict(
+            usage="Type a domain. Queries A, AAAA, MX, NS, TXT, SOA, CNAME, CAA and "
+                  "SRV at once. Windows has no dig, so netzilla asks Cloudflare over "
+                  "DNS-over-HTTPS instead — or uses dig.exe if you have put one on "
+                  "your PATH.",
+            note="Over DNS-over-HTTPS the DNS server box can't be honoured and "
+                 "internal zones aren't visible.",
+        ),
+        ("DNSWhoisPane", "whois"): dict(
+            usage="Type a domain or an IP. Windows has no whois program, so netzilla "
+                  "asks the WHOIS servers itself — IANA first, then the registry IANA "
+                  "names, then the registrar when the registry points to one — and "
+                  "trims the legal boilerplate.",
+            note="Needs outbound TCP port 43, which some office networks block. RDAP "
+                 "gives the same facts over HTTPS.",
+        ),
+        ("DNSWhoisPane", "trace"): dict(
+            note="Needs dig, which Windows doesn't have, so this one runs on Linux "
+                 "and macOS only. RESOLVERS and RDAP work everywhere.",
+        ),
+        ("SSLTLSPane", "openssl"): dict(
+            note="Windows has no openssl, so netzilla shakes hands with Python's own "
+                 "TLS instead: protocol, cipher, the server's certificate and whether "
+                 "it verifies, but not the whole chain as served. For openssl's full "
+                 "report:  winget install ShiningLight.OpenSSL.Light",
+        ),
+        ("LANPane", "dhcp"): dict(
+            note="Windows' DHCP Client service keeps UDP/68, where DHCP offers "
+                 "arrive, so this can't listen on Windows. Run it from Linux or macOS "
+                 "on the same network.",
+        ),
+        ("LANPane", "snmp"): dict(
+            targets=("any switch/router you manage with SNMP enabled",),
+            note="Needs the Net-SNMP tools (snmpget, snmpbulkwalk), which have no "
+                 "current Windows release; netzilla uses an older build if one is "
+                 "installed in C:\\usr\\bin. Otherwise poll from Linux or macOS.",
+        ),
+        ("LANPane", "syslog"): dict(
+            usage="Listens on UDP/514 unless you type a port number (e.g. 1514) in "
+                  "the target field. 'Seconds' = how long to collect (5–300). Point "
+                  "devices at this machine's IP and messages appear in a table. No "
+                  "administrator rights needed.",
+            targets=(_SYSLOG_SELF_TEST.format(python="py"),
+                     "Cisco IOS:  logging host <this-ip>"),
+            note="The first time, Windows Defender Firewall asks whether Python may "
+                 "accept connections: allow it on private networks, or other "
+                 "devices' messages never arrive.",
+        ),
+        ("InterfacesPane", "iftop"): dict(
+            note="iftop has no Windows version. LIVE RATES shows each interface's "
+                 "throughput, and CAPTURE → TALKERS shows which host pairs moved "
+                 "the most.",
+        ),
+        ("InterfacesPane", "vnstat"): dict(
+            note="vnstat has no Windows version. LIVE RATES covers the live side, and "
+                 "Windows keeps per-app totals of its own under Data usage in "
+                 "Settings → Network & internet.",
+        ),
+        ("InterfacesPane", "bmon"): dict(
+            usage="bmon has no Windows version. LIVE RATES shows the same "
+                  "per-interface rates, packets, errors and drops from Windows' own "
+                  "counters, with nothing to install.",
+            note="",
+        ),
+        ("InterfacesPane", "refresh"): dict(
+            usage="No input needed. Re-reads the interface list from Windows' adapter "
+                  "table and refills the dropdown, showing each interface's kind, "
+                  "state, MTU, MAC and addresses, with the default-route one marked.",
+            note="",
+        ),
+        ("InterfacesPane", "tools"): dict(
+            usage="No input needed. Shows that iftop, vnstat, bmon and nload have no "
+                  "Windows versions — LIVE RATES is the one to use here — and whether "
+                  "this session is running as Administrator.",
+            note="LIVE RATES and REFRESH INTERFACES work with nothing installed and "
+                 "need no administrator rights.",
+        ),
+        ("CapturePane", "tools"): dict(
+            usage="No input needed. Shows whether Wireshark's tshark and dumpcap are "
+                  "installed, whether Npcap (the capture driver that comes with "
+                  "Wireshark) is there, and whether this session may capture with "
+                  "it. Also re-reads the interface list.",
+            note="Install Wireshark (winget install WiresharkFoundation.Wireshark) "
+                 "and Npcap with it — a winget install leaves Npcap out, so then get "
+                 "it from npcap.com. If Npcap was set to Administrators only, start "
+                 "netzilla from a terminal opened with 'Run as administrator'.",
+        ),
+        ("CapturePane", "auth"): dict(
+            usage="Windows has no sudo, so there is nothing to unlock: with Npcap "
+                  "installed, captures need no password. If Npcap was set to "
+                  "Administrators only, start netzilla from a terminal opened with "
+                  "'Run as administrator' instead.",
+            note="",
+        ),
+        ("CapturePane", "fix"): dict(
+            usage="No input needed. Windows needs no change to any file for this: it "
+                  "shows what capturing takes here — Wireshark with Npcap, and "
+                  "Administrator only if Npcap was installed that way.",
+            note="",
+        ),
+        ("CapturePane", "tcpdump"): dict(
+            note="tcpdump has no Windows version; CAPTURE does the same job with "
+                 "tshark.",
+        ),
+        ("DiagnosticsPane", "trace"): dict(
+            usage="Type a host or IP. Runs Windows' tracert and labels each hop with "
+                  "its AS. Stores the path, and the next run flags any reroute.",
+            note="Takes up to a minute or two: tracert waits on every hop that "
+                 "doesn't answer.",
+        ),
+        ("DiagnosticsPane", "mtr"): dict(
+            usage="Type a host or IP. Runs pathping, Windows' own mtr: it traces the "
+                  "route, then pings every hop 10 times and reports per-hop loss and "
+                  "latency.",
+            note="Takes a minute or two. Loss at a middle hop that doesn't continue "
+                 "to the end is usually ICMP rate-limiting, not a real problem.",
+        ),
+        ("DiagnosticsPane", "tools"): dict(
+            usage="No input needed. Lists which local tools (ping, tracert, pathping, "
+                  "dig, whois, openssl) are present and, for any that are missing, "
+                  "the winget command or what netzilla uses instead.",
+        ),
+        ("WifiPane", "scan"): dict(
+            usage="Press SCAN to list every access point in range: SSID, BSSID, the "
+                  "AP's maker, band, channel, signal, encryption and top data rate. "
+                  "Uses Windows' own Wi-Fi API (exact dBm, no administrator rights) "
+                  "and falls back to netsh. Windows 11 24H2 and later show Wi-Fi "
+                  "networks only to apps allowed your location — TOOL CHECK says "
+                  "where to allow it.",
+        ),
+        ("WifiPane", "iwscan"): dict(
+            usage="iw is Linux-only. On Windows this runs the same scan as SCAN, "
+                  "which already reads exact dBm from the Wi-Fi API.",
+            note="",
+        ),
+        ("WifiPane", "tools"): dict(
+            usage="No input. Lists your wireless interfaces and whether the Windows "
+                  "Wi-Fi API and netsh answer, with what to change when they don't "
+                  "— and the same for Bluetooth: the bleak library, the adapter and "
+                  "whether it is on.",
+            note="If SCAN is empty: Wi-Fi on, Airplane mode off, and desktop apps "
+                 "allowed to use your location (Settings → Privacy & security → "
+                 "Location).",
+        ),
+        ("WifiPane", "link"): dict(
+            note="Retries above ~10% mean interference or a weak link. Windows' "
+                 "Wi-Fi API gives the signal, bitrate and access point; Windows "
+                 "doesn't report retries or missed beacons.",
+        ),
+        ("WifiPane", "traffic"): dict(
+            note="No administrator rights: Windows' interface counters for bytes and "
+                 "its connection table for connections — the same code as the INT "
+                 "and FLOW tabs, limited to the Wi-Fi.",
+        ),
+        ("WifiPane", "bluetooth"): dict(
+            note="Listening only: netzilla never pairs or connects. It is an active "
+                 "scan — the radio may send a short scan request so a device answers "
+                 "with its name. Phones change their Bluetooth address every few "
+                 "minutes for privacy, so one phone can appear more than once. "
+                 "Distance is a rough estimate from signal strength.",
+        ),
+        ("FlowPane", "connections"): dict(
+            note="Reads the connection table through Windows' IP Helper API: every "
+                 "socket and the program that owns it, with no administrator rights. "
+                 "netstat is the fallback.",
+        ),
+        ("FlowPane", "intensity"): dict(
+            usage="Per-interface throughput right now, from two samples of Windows' "
+                  "interface counters two seconds apart — the same sampler the INT "
+                  "tab uses.",
+            note="",
+        ),
+        ("FlowPane", "tools"): dict(
+            usage="No input. Shows where the connection table comes from (Windows' IP "
+                  "Helper API, or netstat), how many sockets are readable right now, "
+                  "and where geo and PCAP come from.",
+        ),
+    },
+    "macos": {
+        ("DNSWhoisPane", "records"): dict(
+            note="Uses the dig that comes with macOS. Without it the same types are "
+                 "asked of Cloudflare over DNS-over-HTTPS — but then the DNS server "
+                 "box can't be honoured and internal zones aren't visible.",
+        ),
+        ("DNSWhoisPane", "whois"): dict(
+            note="Uses the whois that comes with macOS — nothing to install.",
+        ),
+        ("SSLTLSPane", "openssl"): dict(
+            note="Uses the openssl that comes with macOS (LibreSSL). Where it has no "
+                 "short summary mode, netzilla shows its full report instead.",
+        ),
+        ("LANPane", "snmp"): dict(
+            targets=("any switch/router you manage with SNMP enabled",),
+            note="Uses the Net-SNMP tools that come with macOS (snmpget, "
+                 "snmpbulkwalk). The device needs SNMP v2c switched on, with a "
+                 "community you know.",
+        ),
+        ("LANPane", "syslog"): dict(
+            usage="Listens on UDP/514 unless you type a port number (e.g. 1514) in "
+                  "the target field. 'Seconds' = how long to collect (5–300). Point "
+                  "devices at this machine's IP and messages appear in a table. macOS "
+                  "lets any user listen on 514, so no sudo is needed.",
+            targets=(_SYSLOG_SELF_TEST.format(python="python3"),
+                     "Cisco IOS:  logging host <this-ip>"),
+            note="If the macOS firewall is on, allow Python's incoming connections "
+                 "when asked (System Settings → Network → Firewall), or other "
+                 "devices' messages never arrive.",
+        ),
+        ("InterfacesPane", "iftop"): dict(
+            note="Install: brew install iftop. It reads packets through /dev/bpf*, so "
+                 "netzilla checks three ways — running as root, Wireshark's ChmodBPF "
+                 "giving your account access, or passwordless sudo — and uses "
+                 "whichever works. ChmodBPF is the fix that makes it work for good, "
+                 "with no sudo: CAPTURE → TOOL CHECK shows how.",
+        ),
+        ("InterfacesPane", "vnstat"): dict(
+            note="Install and start collecting:  brew install vnstat  then  sudo "
+                 "brew services start vnstat. It watches en0 unless told otherwise in "
+                 "$(brew --prefix)/etc/vnstat.conf, and has no history until the "
+                 "service has been running for a while.",
+        ),
+        ("InterfacesPane", "bmon"): dict(
+            usage="Pick an interface, set Seconds, press BMON SNAPSHOT. Runs bmon in "
+                  "its scriptable output mode for that window. bmon prints bare "
+                  "cumulative counters with no header, so netzilla matches them "
+                  "against macOS's own interface counters (netstat -ib) to work out "
+                  "which column is which, then reports them in real units: totals "
+                  "since boot, bytes moved during the capture, and the Mbit/s that "
+                  "implies. No sudo needed.",
+            note="When the columns cannot be matched to the system's counters, "
+                 "netzilla says so rather than guessing. bmon's full-screen graph "
+                 "mode cannot run inside netzilla — for that run 'bmon -p <iface>' "
+                 "in its own terminal. Install: brew install bmon",
+        ),
+        ("InterfacesPane", "refresh"): dict(
+            usage="No input needed. Re-reads the interface list with ifconfig and "
+                  "refills the dropdown, showing each interface's kind, state, MTU, "
+                  "MAC and addresses, with the default-route one marked.",
+            note="",
+        ),
+        ("InterfacesPane", "tools"): dict(
+            usage="No input needed. Shows which of iftop, vnstat, bmon and nload are "
+                  "installed, what each adds, whether this session is running as "
+                  "root, and the brew command for anything missing.",
+        ),
+        ("CapturePane", "tools"): dict(
+            usage="No input needed. Shows whether tshark, tcpdump and dumpcap are "
+                  "installed, and whether this session may actually capture — root, "
+                  "read access to /dev/bpf* (Wireshark's ChmodBPF), or a sudo "
+                  "session. Also re-reads the interface list.",
+            note="The recommended setup captures with no sudo at all: install "
+                 "Wireshark (brew install --cask wireshark-app), which brings "
+                 "ChmodBPF, then log out and back in. Until then, AUTHENTICATE "
+                 "opens a sudo session for this run.",
+        ),
+        ("CapturePane", "auth"): dict(
+            usage="Asks for your sudo password once, in a box inside netzilla, and "
+                  "every capture for the rest of this run goes through without a "
+                  "prompt — including after switching tabs. Press it again to lock "
+                  "the session immediately.\n\nYou do not normally have to press "
+                  "this: when capturing is blocked, netzilla offers the one-time "
+                  "unlock by itself.",
+            note="The password opens a sudo session and is then dropped — netzilla "
+                 "does not hold it. It refreshes that session every minute so it "
+                 "cannot expire while running, and the session ends when netzilla "
+                 "exits (sudo forgets it within 5 minutes, or immediately with "
+                 "'sudo -k'). For a permanent fix that needs no password at all, "
+                 "install Wireshark's ChmodBPF.",
+        ),
+        ("CapturePane", "fix"): dict(
+            usage="No input needed. macOS has no pkexec, so netzilla can't run the "
+                  "setup for you: this shows the steps — Wireshark's ChmodBPF lets "
+                  "your account capture with no sudo, and AUTHENTICATE covers this "
+                  "run until then.",
+            note="",
+        ),
+        ("DiagnosticsPane", "mtr"): dict(
+            note="Loss at a middle hop that doesn't continue to the end is usually "
+                 "ICMP rate-limiting, not a real problem. Install: brew install mtr. "
+                 "Homebrew's mtr needs root: netzilla runs it through the sudo "
+                 "session AUTHENTICATE opens on the CAPTURE tab, or start netzilla "
+                 "with sudo.",
+        ),
+        ("DiagnosticsPane", "tools"): dict(
+            usage="No input needed. Lists which local tools (ping, traceroute, mtr, "
+                  "dig, whois, openssl…) are installed and the brew command for any "
+                  "that are missing.",
+        ),
+        ("WifiPane", "scan"): dict(
+            usage="Press SCAN to list every access point in range: SSID, band, "
+                  "channel, signal, encryption and top data rate. Uses macOS's "
+                  "system_profiler, which takes a few seconds. macOS 14.4 and later "
+                  "keep access points' MAC addresses (BSSIDs) from command-line "
+                  "tools, so the AP's maker stays blank there.",
+        ),
+        ("WifiPane", "iwscan"): dict(
+            usage="iw is Linux-only. On macOS this runs the same scan as SCAN.",
+            note="",
+        ),
+        ("WifiPane", "tools"): dict(
+            usage="No input. Lists your wireless interfaces and whether "
+                  "system_profiler and the older airport tool answer — and the same "
+                  "for Bluetooth: the bleak library, the adapter, whether it is on "
+                  "and whether your terminal may use it.",
+            note="If SCAN is empty, check that Wi-Fi is switched on (menu bar → "
+                 "Wi-Fi). Names shown as <redacted> need Location Services for your "
+                 "terminal app.",
+        ),
+        ("WifiPane", "link"): dict(
+            note="Retries above ~10% mean interference or a weak link. macOS gives "
+                 "the signal, noise and transmit rate (from system_profiler, or "
+                 "airport on 14.3 and older); it doesn't report retries or missed "
+                 "beacons.",
+        ),
+        ("WifiPane", "traffic"): dict(
+            note="No sudo: macOS's interface counters (netstat -ib) for bytes and "
+                 "netstat for connections — the same code as the INT and FLOW tabs, "
+                 "limited to the Wi-Fi.",
+        ),
+        ("WifiPane", "bluetooth"): dict(
+            note="Listening only: netzilla never pairs or connects. macOS hides real "
+                 "Bluetooth addresses and gives each device an ID of its own "
+                 "instead, so the maker comes from the broadcast alone. The first "
+                 "scan asks whether your terminal app may use Bluetooth (System "
+                 "Settings → Privacy & Security → Bluetooth). Distance is a rough "
+                 "estimate from signal strength.",
+        ),
+        ("FlowPane", "connections"): dict(
+            note="Reads the connection table with netstat and process names with "
+                 "lsof, which names only your own programs' sockets unless netzilla "
+                 "runs with sudo.",
+        ),
+        ("FlowPane", "intensity"): dict(
+            usage="Per-interface throughput right now, from two samples of macOS's "
+                  "interface counters (netstat -ib) two seconds apart — the same "
+                  "sampler the INT tab uses.",
+            note="",
+        ),
+        ("FlowPane", "tools"): dict(
+            usage="No input. Shows whether netstat and lsof are present, how many "
+                  "sockets are readable right now, and where geo and PCAP come from.",
+        ),
+    },
+}
+
+
+def get_help(pane: str, action: str, system: str | None = None) -> ToolHelp | None:
+    """The card for one button, as it reads on this system (or `system`)."""
+    tool = HELP.get(pane, {}).get(action)
+    changes = ON_OS.get(system or hostos.NAME, {}).get((pane, action))
+    if tool is None or not changes:
+        return tool
+    changes = dict(changes)
+    if "note" in changes and (pane, action) in _REFRESH_DEFAULTS:
+        changes["note"] = _with_refresh(changes["note"], _REFRESH_DEFAULTS[(pane, action)])
+    return replace(tool, **changes)
 
 
 def help_panel(palette: Palette, label: str, tool: ToolHelp) -> RenderableType:
@@ -1547,4 +1918,4 @@ def help_panel(palette: Palette, label: str, tool: ToolHelp) -> RenderableType:
     )
 
 
-__all__ = ["HELP", "ToolHelp", "get_help", "help_panel"]
+__all__ = ["HELP", "ON_OS", "ToolHelp", "get_help", "help_panel"]

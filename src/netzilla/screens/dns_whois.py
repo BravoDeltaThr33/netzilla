@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from rich.text import Text
 
+from .. import hostos
 from ..clients import doh, rdap, virustotal
 from ..local import dns_whois, typosquat
 from ..render import group, kv_panel, table_panel, text_panel, verdict_line
@@ -97,7 +98,8 @@ class DNSWhoisPane(LookupPane):
                     self.palette,
                     f"WHOIS — {target}",
                     dns_whois.condense_whois(result.output),
-                    subtitle="local whois client",
+                    subtitle="local whois client" if result.command.startswith("whois ")
+                    else result.command,
                 )
             )
             return
@@ -155,8 +157,10 @@ class DNSWhoisPane(LookupPane):
             await self.push_warning(
                 "DNS server box ignored",
                 f"Without dig, netzilla can't ask {server} directly — these answers "
-                "came from Cloudflare (1.1.1.1). Install dig to query a specific "
-                "server:\n    sudo apt install dnsutils",
+                "came from Cloudflare (1.1.1.1). "
+                + ("Install dig to query a specific server:\n    "
+                   + hostos.install_hint("dig") if hostos.available_here("dig")
+                   else "dig is not available on this system."),
             )
 
     async def _reverse(self) -> None:
@@ -341,7 +345,7 @@ class DNSWhoisPane(LookupPane):
         await self.push_error(
             f"{tool} not installed",
             f"netzilla uses your system's {tool} client for this.\n\n"
-            f"Install it with:\n    sudo apt install {package}",
+            + hostos.missing_tool_text(tool),
         )
 
 

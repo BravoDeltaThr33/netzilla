@@ -1,7 +1,8 @@
 """Configuration: API keys, shared secrets, theme choice, timeouts.
 
-Stored as TOML at ~/.config/netzilla/config.toml with 0600 permissions.
-The Settings tab reads and writes this file directly.
+Stored as TOML in config.toml with 0600 permissions: ~/.config/netzilla/ on
+Linux and macOS, %APPDATA%\\netzilla\\ on Windows ($XDG_CONFIG_HOME/netzilla/
+wherever that is set). The Settings tab reads and writes this file directly.
 
 Credentials resolve in two layers, highest first:
 
@@ -28,13 +29,11 @@ if sys.version_info >= (3, 11):
 else:  # pragma: no cover - 3.10 fallback
     import tomli as tomllib
 
-from . import __version__
+from . import __version__, hostos
 from .themes import DEFAULT_THEME
 
 
-DEFAULT_CONFIG_DIR = Path(
-    os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")
-) / "netzilla"
+DEFAULT_CONFIG_DIR = hostos.config_dir()
 DEFAULT_CONFIG_PATH = DEFAULT_CONFIG_DIR / "config.toml"
 DEFAULT_CACHE_PATH = DEFAULT_CONFIG_DIR / "cache.sqlite3"
 

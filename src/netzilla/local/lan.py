@@ -3,9 +3,10 @@
 This is the internal-network counterpart to the DISCOVERY tab (which only sees
 public IPs via Shodan InternetDB). Everything here is local: it sends ICMP
 echo through the system `ping` (no raw sockets, no root needed) and reads MACs
-from the kernel neighbour table (`ip neigh`). A true ARP-request sweep needs
-raw sockets; this ping+neighbour approach works unprivileged and finds every
-host that answers ICMP or that the box has recently talked to.
+from the kernel neighbour table (`ip neigh` on Linux, `arp -an` on macOS,
+`arp -a` on Windows). A true ARP-request sweep needs raw sockets; this
+ping+neighbour approach works unprivileged and finds every host that answers
+ICMP or that the box has recently talked to.
 """
 
 from __future__ import annotations
@@ -14,7 +15,8 @@ import asyncio
 import ipaddress
 import re
 
-from .runner import CommandResult, have, run
+from .. import hostos
+from .runner import have, run
 
 # Cap the sweep so a fat prefix can't spawn tens of thousands of pings.
 MAX_HOSTS = 1024
@@ -61,7 +63,10 @@ def parse_neigh(output: str) -> dict[str, str]:
 
 
 async def arp_table() -> dict[str, str]:
-    if have("ip"):
+    if hostos.is_windows():
+        result = await run(["arp", "-a"], timeout=10.0)
+        return parse_arp_windows(result.output) if result.ok else {}
+    if have("ip") and not hostos.is_macos():
         result = await run(["ip", "neigh", "show"], timeout=10.0)
         if result.ok:
             return parse_neigh(result.output)
@@ -72,14 +77,48 @@ async def arp_table() -> dict[str, str]:
     return {}
 
 
-ARP_A_RE = re.compile(r"\((?P<ip>[\d.]+)\)\s+at\s+(?P<mac>[0-9a-fA-F:]{17})")
+# Linux: "? (192.168.1.1) at aa:bb:cc:dd:ee:ff [ether] on eth0"; macOS leaves
+# out leading zeros: "? (192.168.1.1) at 0:1b:2c:3:4:5 on en0 ifscope [ethernet]".
+ARP_A_RE = re.compile(
+    r"\((?P<ip>[\d.]+)\)\s+at\s+(?P<mac>[0-9a-fA-F]{1,2}(?::[0-9a-fA-F]{1,2}){5})\b"
+)
 
 
 def _parse_arp_a(output: str) -> dict[str, str]:
-    return {
-        m.group("ip"): m.group("mac").lower()
-        for m in ARP_A_RE.finditer(output)
-    }
+    table = {}
+    for m in ARP_A_RE.finditer(output):
+        mac = ":".join(part.zfill(2) for part in m.group("mac").split(":")).lower()
+        if not _group_mac(mac):
+            table[m.group("ip")] = mac
+    return table
+
+
+# Windows: "  192.168.1.1           aa-bb-cc-dd-ee-ff     dynamic" (the
+# headings and the type are translated; the two addresses never are).
+ARP_WIN_RE = re.compile(
+    r"^\s*(?P<ip>\d{1,3}(?:\.\d{1,3}){3})\s+(?P<mac>[0-9a-fA-F]{2}(?:-[0-9a-fA-F]{2}){5})\b",
+    re.M,
+)
+
+
+def _group_mac(mac: str) -> bool:
+    """Broadcast and multicast addresses (ff:ff:…, 01:00:5e:…): table
+    entries for groups, not devices."""
+    try:
+        return bool(int(mac[:2], 16) & 1)
+    except ValueError:
+        return True
+
+
+def parse_arp_windows(output: str) -> dict[str, str]:
+    """IP -> MAC from Windows' `arp -a`, devices only."""
+    table: dict[str, str] = {}
+    for m in ARP_WIN_RE.finditer(output or ""):
+        mac = m.group("mac").replace("-", ":").lower()
+        if _group_mac(mac):
+            continue
+        table.setdefault(m.group("ip"), mac)
+    return table
 
 
 _TTL_RE = re.compile(r"\bttl[=:]\s*(\d+)", re.I)
@@ -93,18 +132,46 @@ async def _ping_one(ip: str, timeout: float) -> tuple[str, float | None, int | N
     255 for most network gear. The device-identification columns use it.
     """
     result = await run(
-        ["ping", "-c", "1", "-W", str(int(max(1, timeout))), ip],
+        sweep_ping_argv(ip, timeout),
         timeout=timeout + 2,
         ok_returncodes=(0, 1, 2),
     )
     if not result.ok and result.missing_tool:
         raise FileNotFoundError("ping")
-    match = re.search(r"time[=<]\s*([\d.]+)\s*ms", result.output)
-    if "1 received" in result.output or "1 packets received" in result.output or match:
-        ttl = _TTL_RE.search(result.output)
-        return (ip, float(match.group(1)) if match else 0.0,
+    return (ip, *read_reply(result.output))
+
+
+def sweep_ping_argv(ip: str, timeout: float) -> list[str]:
+    """One echo to `ip`, giving up after `timeout` seconds."""
+    if hostos.is_windows():
+        return ["ping", "-n", "1", "-w", str(int(max(0.2, timeout) * 1000)), ip]
+    if hostos.is_macos():
+        return ["ping", "-c", "1", "-W", str(int(max(0.2, timeout) * 1000)), ip]
+    return ["ping", "-c", "1", "-W", str(int(max(1, timeout))), ip]
+
+
+# A Windows reply line in any language: "… time=2ms TTL=64", "… Zeit<1ms TTL=64".
+_WIN_REPLY_RE = re.compile(r"[=<]\s*([\d.]+)\s*ms\s+TTL=(\d+)", re.I)
+
+
+def read_reply(output: str) -> tuple[float | None, int | None]:
+    """(rtt_ms, ttl) of the one echo's reply; (None, None) when there was none.
+
+    Windows answers "Destination host unreachable" from this machine itself
+    and still exits 0, so there only a real echo reply — which carries a TTL —
+    counts."""
+    output = output or ""
+    if hostos.is_windows():
+        reply = _WIN_REPLY_RE.search(output)
+        if not reply:
+            return None, None
+        return float(reply.group(1)), int(reply.group(2))
+    match = re.search(r"time[=<]\s*([\d.]+)\s*ms", output)
+    if "1 received" in output or "1 packets received" in output or match:
+        ttl = _TTL_RE.search(output)
+        return (float(match.group(1)) if match else 0.0,
                 int(ttl.group(1)) if ttl else None)
-    return ip, None, None
+    return None, None
 
 
 async def sweep(

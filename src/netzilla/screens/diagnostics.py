@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .. import hostos
 from ..local import cymru, history, mtu, netdiag, ntp
 from ..render import kv_panel, table_panel, text_panel, verdict_line
 from ..validators import ValidationError, valid_host
@@ -47,7 +48,7 @@ class DiagnosticsPane(LookupPane):
 
         if action == "ping":
             count = self._int(self.field("count") or "4", "Ping count", 1, 30)
-            await self.begin(f"ping -c {count} {host}…")
+            await self.begin(f"ping {'-n' if hostos.is_windows() else '-c'} {count} {host}…")
             result = await netdiag.ping(host, count)
             await self.finish()
             if result.missing_tool:
@@ -93,7 +94,11 @@ class DiagnosticsPane(LookupPane):
             return
 
         if action == "mtr":
-            await self.begin(f"mtr --report {host} — takes about 10 seconds…")
+            tool = netdiag.mtr_tool()
+            await self.begin(
+                f"pathping {host} — traces the route, then pings every hop; "
+                "takes a minute or two…" if tool == "pathping"
+                else f"mtr --report {host} — takes about 10 seconds…")
             result = await netdiag.mtr(host)
             await self.finish()
             if result.missing_tool:
@@ -101,11 +106,21 @@ class DiagnosticsPane(LookupPane):
                 return
             await self.push(
                 text_panel(
-                    self.palette, f"MTR report — {host}",
+                    self.palette,
+                    f"pathping report — {host}" if tool == "pathping"
+                    else f"MTR report — {host}",
                     result.output or result.error or "No output.",
-                    subtitle="local · mtr",
+                    subtitle=f"local · {tool}",
                 )
             )
+            if netdiag.mtr_needs_root(result):
+                await self.push_warning(
+                    "mtr needs root on macOS",
+                    "Homebrew's mtr cannot send its probes as an ordinary user. "
+                    "Press AUTHENTICATE on the CAPTURE tab once and netzilla runs "
+                    "mtr through that sudo session, or start netzilla with "
+                    f"'sudo netzilla', or run it yourself:\n    sudo mtr --report -n {host}",
+                )
             return
 
         if action == "port":
@@ -114,7 +129,7 @@ class DiagnosticsPane(LookupPane):
     async def _traceroute(self, host: str) -> None:
         import asyncio
 
-        await self.begin(f"traceroute {host} — this can take a minute…")
+        await self.begin(f"{netdiag.traceroute_tool()} {host} — this can take a minute…")
         result = await netdiag.traceroute(host)
         if result.missing_tool:
             await self.finish()
@@ -151,7 +166,7 @@ class DiagnosticsPane(LookupPane):
             table_panel(
                 self.palette, f"Path to {host} (with origin AS)",
                 ["Hop", "IP", "RTT", "AS", "Registry / country"], rows,
-                subtitle="traceroute + Team Cymru DNS",
+                subtitle=f"{netdiag.traceroute_tool()} + Team Cymru DNS",
             )
         )
 
@@ -252,7 +267,7 @@ class DiagnosticsPane(LookupPane):
                     ("Search steps", result.get("steps")),
                     ("Note", result.get("note")),
                 ],
-                subtitle="local · ping -M do",
+                subtitle=f"local · {mtu.df_ping_label()}",
             )
         )
 
@@ -299,7 +314,19 @@ class DiagnosticsPane(LookupPane):
                 self.palette, "Local tool availability", ["Tool", "Status"], rows
             )
         )
-        if missing:
+        if missing and not hostos.is_linux():
+            commands = hostos.install_commands(missing)
+            notes = [hostos.missing_tool_text(t) for t in missing
+                     if not hostos.install_commands([t])]
+            await self.push(
+                text_panel(
+                    self.palette,
+                    "Install the missing ones" if commands else "Not needed here",
+                    "\n".join(commands + ([""] if commands and notes else []) + notes),
+                    style=self.palette.accent,
+                )
+            )
+        elif missing:
             packages = {
                 "ping": "iputils-ping", "traceroute": "traceroute",
                 "tracepath": "iputils-tracepath", "mtr": "mtr-tiny",
@@ -327,5 +354,6 @@ class DiagnosticsPane(LookupPane):
     async def _missing(self, tool: str, package: str) -> None:
         await self.push_error(
             f"{tool} not installed",
-            f"Install it with:\n    sudo apt install {package}",
+            f"Install it with:\n    sudo apt install {package}" if hostos.is_linux()
+            else hostos.missing_tool_text(tool),
         )

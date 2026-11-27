@@ -15,7 +15,8 @@ counter polls a few seconds apart give live throughput and error rate.
     ifInErrors    1.3.6.1.2.1.2.2.1.14
     ifOutErrors   1.3.6.1.2.1.2.2.1.20
 
-Install with: sudo apt install snmp
+Install with: sudo apt install snmp. macOS ships the tools; Net-SNMP has
+no current Windows release.
 """
 
 from __future__ import annotations

@@ -1,6 +1,7 @@
 ===============================================================================
- netzilla 4.5.0
+ netzilla 4.6.0
  A retro terminal toolkit for network administrators
+ Runs on Linux, macOS and Windows
  Free and open data sources only · pixel graphs in kitty and Ghostty
 ===============================================================================
 
@@ -29,6 +30,40 @@ openssl, ping, traceroute, mtr) that no API should be replacing.
 -------------------------------------------------------------------------------
  1. WHAT'S NEW
 -------------------------------------------------------------------------------
+
+ 4.6.0 — netzilla runs on Windows and macOS too.
+
+   One netzilla for all three systems: the same tabs, buttons and keys on
+   Linux, macOS, and Windows 10 and 11. Where a system does a job its own
+   way, netzilla asks it that way, and every tab's TOOL CHECK and the
+   instruction cards say what that system needs. Section 3 has the install
+   steps for each, and 3d lists what works where.
+
+   Windows
+     Interfaces, LIVE RATES and FLOW's connections (with the program behind
+     each) come from Windows' own IP Helper API, and the WIFI tab from its
+     Native Wi-Fi API: every access point with exact dBm, live signal
+     graphs, channels and link health. BLUETOOTH uses Windows' own
+     Bluetooth stack. Nothing to install, and no administrator rights.
+     tracert and pathping stand in for traceroute and mtr. Windows has no
+     dig or whois, so DNS records come over DNS-over-HTTPS and WHOIS from
+     netzilla's own client (IANA, then the registry, then the registrar);
+     without openssl, the TLS handshake is Python's own. Capture uses
+     Wireshark with Npcap. Settings live in %APPDATA%\netzilla
+   macOS
+     The WIFI tab works on macOS: SCAN, LIVE AIR, SIGNAL, CHANNELS and LINK
+     HEALTH read system_profiler, or the airport tool on macOS 14.3 and
+     older. So do LIVE RATES, DASH's NETWORK PULSE, WIFI → TRAFFIC and FLOW:
+     interface counters from netstat -ib, connections from netstat, and the
+     program behind each from lsof. iftop and capture need no sudo once
+     Wireshark's ChmodBPF is installed, and mtr runs through the sudo
+     session AUTHENTICATE opens. DASH shows the real uptime and memory use,
+     and SNMP POLL uses the Net-SNMP tools macOS already has
+   Everywhere
+     A missing tool names the command that installs it on the system you
+     are on (apt, brew or winget), or says what netzilla does instead where
+     the tool does not exist. 926 tests (67 new).
+
 
  4.5.0 — Tokyo from a picture, and the beast's breath alive.
 
@@ -1168,7 +1203,7 @@ openssl, ping, traceroute, mtr) that no API should be replacing.
      uploaded), new SUBMIT URL TO VT for URLs it has never seen, new VT
      REPUTATION on the DNS/WHOIS tab, and every VT panel lists which engines
      flagged the target and what they called it.
-   * URLhaus — an offline snapshot of the URLhaus database (56,366 malware
+   * URLhaus — an offline snapshot of the URLhaus database (56,193 malware
      URLs, captured 2026-09-19) now ships with netzilla. If the live API is
      unreachable, or you run with --offline, lookups answer from the snapshot
      and say how old it is. Popular shared sites (GitHub, Google Drive,
@@ -1248,10 +1283,11 @@ else — netzilla works out which terminal it is in by itself. Run
 Screenshots of most of these, in pixel and text form, are in docs/showcase/
 inside this folder (open live-air.gif to see LIVE AIR moving).
 
-Some LAN actions send raw/broadcast packets or bind privileged ports, so they
-need root — run them with `sudo netzilla`. Each says so plainly if you don't.
-On INT, only IFTOP SNAPSHOT needs root; LIVE RATES works as any user with
-nothing installed.
+Some LAN actions send raw/broadcast packets or bind privileged ports, so on
+Linux they need root — run them with `sudo netzilla`. Each says so plainly if
+you don't. On INT, only IFTOP SNAPSHOT needs root; LIVE RATES works as any
+user with nothing installed. netzilla runs on Linux, macOS and Windows;
+section 3d says what differs on each.
 
 Seventeen retro colour themes, all dark, each with a different dominant colour:
 
@@ -1283,9 +1319,10 @@ and type "theme".
  3. INSTALLING  (step by step)
 -------------------------------------------------------------------------------
 
-Two tracks below: Linux (Ubuntu / Linux Mint) and macOS. Both end up running
-the same `netzilla` command; only how you get pipx and the local tools
-installed differs.
+Three tracks below: Linux (Ubuntu / Linux Mint), macOS and Windows. All end
+up running the same `netzilla` command; only how you get Python, pipx and the
+local tools installed differs. 3d lists what works differently on each, and
+3e (upgrading, removing, a terminal for the pixel graphs) is for all three.
 
 
 -------------------------------- 3a. LINUX (Ubuntu / Linux Mint) --------------------------------
@@ -1355,7 +1392,7 @@ a terminal (Ctrl+Alt+T opens one on both).
  STEP 4 — Unpack and install netzilla
  ------------------------------------
      cd ~/Downloads
-     tar -xzf netzilla-4.5.0.tar.gz
+     tar -xzf netzilla-4.6.0.tar.gz
      cd netzilla
      pipx install .
 
@@ -1378,7 +1415,7 @@ a terminal (Ctrl+Alt+T opens one on both).
 
  The app opens on DASH. The API KEYS panel shows every key as "not set" —
  expected, since netzilla ships with no keys; see section 4 — and DATA &
- CACHE should show "URLhaus snapshot 56,366 URLs".
+ CACHE should show "URLhaus snapshot 56,193 URLs".
  The TERMINAL panel names your terminal and says whether graphs will be
  pixels or text. If the command is not found, open a new terminal or run
  ~/.local/bin/netzilla.
@@ -1407,28 +1444,36 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
  If Homebrew is already installed, skip to Step 2.
 
 
- STEP 2 — Install Python, pipx, and the extra local tools netzilla wraps
- ------------------------------------------------------------------------
-     brew install python pipx mtr net-snmp
-
- macOS already ships dig, whois, traceroute, ping and openssl, so only mtr
- (for MTR REPORT) and net-snmp (for SNMP POLL) need installing. DIAG -> TOOL
- CHECK will confirm what is present after install.
-
- On the INT tab, macOS support is partial: REFRESH INTERFACES falls back to
- ifconfig and works, and iftop/vnstat/bmon work if you brew-install them, but
- LIVE RATES reads /proc/net/dev and so is Linux-only. Everything on every
- other tab works on macOS.
-
+ STEP 2 — Install Python, pipx, and the one extra tool netzilla wraps
+ --------------------------------------------------------------------
+     brew install python pipx mtr
      pipx ensurepath
 
  Close and reopen your terminal so the PATH change takes effect.
+
+ macOS already ships dig, whois, traceroute, ping, openssl, tcpdump and the
+ Net-SNMP tools (for SNMP POLL), so only mtr (for MTR REPORT) needs
+ installing. DIAG -> TOOL CHECK confirms what is present after install.
+
+ Optional, for the INT tab's iftop/vnstat/bmon actions (LIVE RATES and the
+ interface list work without them):
+
+     brew install iftop vnstat bmon
+     sudo brew services start vnstat         # vnstat needs its collector
+
+ Optional, for the CAPTURE tab and WIFI -> PACKETS: Wireshark. It brings
+ ChmodBPF, which lets your account capture packets (and run iftop) with no
+ sudo; log out and back in after installing it:
+
+     brew install --cask wireshark-app
+
+ Until then, CAPTURE -> AUTHENTICATE opens a sudo session for the run.
 
 
  STEP 3 — Unpack and install netzilla
  -------------------------------------
      cd ~/Downloads
-     tar -xzf netzilla-4.5.0.tar.gz
+     tar -xzf netzilla-4.6.0.tar.gz
      cd netzilla
      pipx install .
 
@@ -1456,27 +1501,194 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
  Every tab works keyless except the reputation panels on IP LOOKUP, THREAT
  and IOC LOOKUP, which read "not configured" until you add a key.
 
- Two macOS-specific notes:
-   * LAN -> ROGUE DHCP and SYSLOG CATCH bind privileged ports/raw sockets
-     just like on Linux, so they need:  sudo netzilla
-     (SYSLOG CATCH also falls back to udp/1514 on its own without sudo.)
-   * If macOS's firewall prompts "Do you want the application netzilla.bin
-     to accept incoming connections?" when you run SYSLOG CATCH or LAN SWEEP,
-     click Allow — that is macOS Application Firewall asking on behalf of
-     the Python interpreter, not a sign that anything is wrong.
+ macOS-specific notes:
+   * The first time WIFI -> BLUETOOTH scans, macOS asks whether your
+     terminal app may use Bluetooth: allow it. Refused by mistake? System
+     Settings -> Privacy & Security -> Bluetooth, then quit and reopen the
+     terminal.
+   * If WIFI -> SCAN shows network names as <redacted>, allow your terminal
+     app under System Settings -> Privacy & Security -> Location Services.
+   * MTR REPORT needs root on macOS: it runs through the sudo session
+     CAPTURE -> AUTHENTICATE opens, or start netzilla with  sudo netzilla
+   * LAN -> ROGUE DHCP binds a privileged port, so it needs  sudo netzilla
+     too. SYSLOG CATCH does not: macOS lets any user listen on port 514.
+   * If macOS's firewall asks whether Python may accept incoming
+     connections when you run SYSLOG CATCH or LAN -> SWEEP, click Allow —
+     that is the macOS Application Firewall asking on behalf of the Python
+     interpreter netzilla runs in, not a sign that anything is wrong.
 
 
- UPGRADING FROM AN EARLIER VERSION (any 1.x, 2.x, 3.x or 4.x -> 4.5.0)
+-------------------------------- 3c. WINDOWS --------------------------------
+
+These steps work on Windows 10 (version 1809 or newer) and Windows 11.
+Commands go in Windows Terminal, which opens PowerShell: on Windows 11,
+right-click Start and choose Terminal.
+
+
+ STEP 1 — Install Python
+ -----------------------
+     winget install Python.Python.3.13
+
+ Any Python from 3.10 on works; if `py --version` already prints one, skip
+ this step. Without winget, the installer from python.org does the same.
+ Close and reopen Windows Terminal afterwards.
+
+
+ STEP 2 — Install pipx
+ ---------------------
+     py -m pip install --user pipx
+     py -m pipx ensurepath
+
+ Close and reopen Windows Terminal so the PATH change takes effect. If
+ `pipx` is still not found, type `py -m pipx` wherever these steps say
+ `pipx`.
+
+
+ STEP 3 — Unpack and install netzilla
+ ------------------------------------
+     cd ~/Downloads
+     tar -xzf netzilla-4.6.0.tar.gz
+     cd netzilla
+     pipx install .
+
+ tar comes with Windows 10 and 11. pipx fetches everything netzilla needs,
+ the Bluetooth library for Windows included.
+
+
+ STEP 4 — Run it
+ ---------------
+     netzilla
+
+ Run it in Windows Terminal: the old console window draws netzilla's
+ borders and colours badly. Windows 11 has Windows Terminal already; on
+ Windows 10:
+
+     winget install Microsoft.WindowsTerminal
+
+ Graphs are drawn with text in Windows Terminal.
+
+ Nothing else is needed: netzilla uses Windows' own ping, tracert,
+ pathping, arp and netsh, reads the network straight from Windows, and
+ brings its own WHOIS client and DNS-over-HTTPS. Two optional extras:
+
+   openssl, for SSL/TLS -> OPENSSL HANDSHAKE's full report (without it
+   the handshake is done by Python's own TLS):
+
+     winget install ShiningLight.OpenSSL.Light
+
+   Wireshark, for the CAPTURE tab and WIFI -> PACKETS. It needs Npcap, the
+   capture driver, which winget's install leaves out: get it from
+   https://npcap.com (or run Wireshark's own installer and tick Npcap).
+
+     winget install WiresharkFoundation.Wireshark
+
+ Under WSL, netzilla is the Linux version and sees WSL's own virtual
+ network, not Windows' Wi-Fi and adapters: install it on Windows itself,
+ as above, for those.
+
+
+ STEP 5 — Add your own API keys
+ ------------------------------
+ As on Linux and macOS: F2 (SETTINGS), type each key, SAVE SETTINGS, then
+ TEST KEYS. Keys are kept in %APPDATA%\netzilla\config.toml.
+
+ Windows-specific notes:
+   * Windows 11 24H2 and later show Wi-Fi networks only to apps allowed
+     your location. If WIFI -> SCAN is empty, turn on Settings -> Privacy
+     & security -> Location -> "Let desktop apps access your location".
+     WIFI -> TOOL CHECK says when this is the reason.
+   * The first time SYSLOG CATCH listens, Windows Defender Firewall asks
+     whether Python may communicate on networks: allow it on private
+     networks, or other devices' messages never arrive.
+   * Windows has no sudo, and nothing in netzilla needs Administrator
+     there — unless Npcap was installed for Administrators only; then
+     start Windows Terminal with "Run as administrator" to capture.
+
+
+-------------------------------- 3d. WHAT WORKS WHERE --------------------------------
+
+ Every tab is there on all three systems, and everything looked up over the
+ internet (IP LOOKUP, SUBNET, BGP/ASN, THREAT, DISCOVERY, MAC, LIFECYCLE,
+ STATUS, SPEED, CONFIG, CREDS, SSL Labs and crt.sh, RDAP, RESOLVER CHECK)
+ works the same everywhere. The local tools are where systems differ:
+
+ DNS/WHOIS
+   macOS     everything, with the dig and whois macOS ships.
+   Windows   ALL RECORDS and REVERSE ask Cloudflare over DNS-over-HTTPS
+             (Windows has no dig), so the DNS server box is ignored and
+             internal zones aren't visible. DIG +TRACE is Linux and macOS
+             only. WHOIS uses netzilla's own client and needs outbound TCP
+             port 43.
+
+ SSL/TLS
+   macOS     OPENSSL HANDSHAKE shows LibreSSL's full report.
+   Windows   without openssl installed, OPENSSL HANDSHAKE uses Python's
+             own TLS: protocol, cipher and certificate, not the chain as
+             served.
+
+ LAN
+   macOS     ROGUE DHCP needs sudo. SNMP POLL uses the tools macOS ships.
+             SYSLOG CATCH listens on 514 without sudo.
+   Windows   no ROGUE DHCP: Windows' DHCP Client service holds UDP/68. No
+             SNMP POLL: Net-SNMP has no current Windows release. SWEEP,
+             IDENTIFY, DUP-IP WATCH and SYSLOG CATCH work, with no
+             administrator rights.
+
+ INT
+   macOS     LIVE RATES works with nothing installed; iftop, vnstat and
+             bmon come from Homebrew, and iftop needs ChmodBPF or sudo.
+   Windows   LIVE RATES and the interface list work; iftop, vnstat and bmon
+             have no Windows versions.
+
+ WIFI
+   macOS     SCAN and LIVE AIR take a few seconds a scan, and macOS 14.4
+             and later hide access points' MAC addresses (BSSIDs), so the
+             AP maker column stays blank there. LINK HEALTH shows no
+             retries or missed beacons. DEEP SCAN is the same as SCAN.
+             BLUETOOTH needs your terminal app allowed to use Bluetooth,
+             and shows identifiers macOS makes up instead of real
+             addresses.
+   Windows   everything except LINK HEALTH's retries and missed beacons,
+             which Windows doesn't report. DEEP SCAN is the same as SCAN.
+             Windows 11 24H2+ needs location access allowed (3c above).
+   Both      PACKETS needs the capture setup below.
+
+ CAPTURE
+   macOS     tshark and dumpcap from Wireshark; ChmodBPF (installed with
+             it) replaces FIX PERMISSIONS, and AUTHENTICATE covers a run
+             until then.
+   Windows   tshark with Npcap; there is no TCPDUMP CAPTURE (no tcpdump),
+             and AUTHENTICATE and FIX PERMISSIONS have nothing to do.
+
+ FLOW
+   macOS     without sudo, process names are shown only for your own
+             programs.
+   Windows   everything, with no administrator rights.
+
+ DIAG
+   macOS     MTR REPORT needs root (AUTHENTICATE's sudo session, or sudo
+             netzilla).
+   Windows   TRACEROUTE +ASN runs tracert and MTR REPORT runs pathping,
+             both slower than their Linux cousins (a minute or two).
+
+ Pixel graphs need kitty or Ghostty, which run on Linux and macOS. On
+ Windows the graphs are drawn with text.
+
+
+-------------------------------- 3e. ALL SYSTEMS --------------------------------
+
+ UPGRADING FROM AN EARLIER VERSION (any 1.x, 2.x, 3.x or 4.x -> 4.6.0)
  ----------------------------------------------------------------------
      cd ~/Downloads
-     tar -xzf netzilla-4.5.0.tar.gz
+     tar -xzf netzilla-4.6.0.tar.gz
      cd netzilla
      pipx install --force .
      pipx inject netzilla speedtest-cli      # optional; --force wipes it
 
- Your existing ~/.config/netzilla/config.toml (theme, any keys you typed)
- is kept. Blank key lines left over from 1.0 do not hide the new defaults.
- Keys you entered yourself still take priority over the defaults. A Shodan,
+ Your existing config.toml (theme, any keys you typed) is kept: it lives in
+ ~/.config/netzilla on Linux and macOS, and %APPDATA%\netzilla on Windows.
+ Blank key lines left over from 1.0 do not hide the new defaults. Keys you
+ entered yourself still take priority over the defaults. A Shodan,
  OutageDeck or EOSL.ai key saved by an older version is ignored — those
  services are used without one now.
 
@@ -1489,22 +1701,24 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
      pipx uninstall netzilla
 
  That deletes the app and its private virtualenv. It leaves your own data
- behind on purpose — all of it lives in one directory:
+ behind on purpose — all of it lives in one directory, ~/.config/netzilla
+ on Linux and macOS and %APPDATA%\netzilla on Windows:
 
-     ~/.config/netzilla/config.toml     theme, any keys you typed (0600)
-     ~/.config/netzilla/cache.sqlite3   cached responses, quota counters,
-                                        route/origin snapshot history
-     ~/.config/netzilla/oui.csv         a newer IEEE registry, if you ran
-                                        --update-oui
+     config.toml       theme, any keys you typed (0600)
+     cache.sqlite3     cached responses, quota counters, route/origin
+                       snapshot history
+     oui.csv           a newer IEEE registry, if you ran --update-oui
 
  Delete that too only if you want a factory-fresh start:
 
-     rm -rf ~/.config/netzilla
+     rm -rf ~/.config/netzilla                        # Linux, macOS
+     Remove-Item -Recurse $env:APPDATA\netzilla       # Windows (PowerShell)
 
- Then install the new version as in STEP 4 above. If `netzilla` still runs
- an old build afterwards, an older copy is ahead of it on your PATH:
+ Then install the new version as in 3a, 3b or 3c above. If `netzilla` still
+ runs an old build afterwards, an older copy is ahead of it on your PATH:
 
-     which -a netzilla
+     which -a netzilla                                # Linux, macOS
+     where.exe netzilla                               # Windows
 
  (A copy installed with plain `pip install --user` in the past lives at
  ~/.local/bin/netzilla and is removed with `pip uninstall netzilla`.)
@@ -1520,7 +1734,13 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
      pip install speedtest-cli        # optional, for OOKLA TEST
      netzilla
 
- With this route, run `source .venv/bin/activate` before each use.
+ With this route, run `source .venv/bin/activate` before each use. On
+ Windows (PowerShell) there is nothing to activate:
+
+     cd ~/Downloads/netzilla
+     py -m venv .venv
+     .venv\Scripts\python -m pip install -e .
+     .venv\Scripts\netzilla
 
 
  OPTIONAL — a terminal that draws the pixel graphs
@@ -1601,6 +1821,7 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
  ------------------------------------------------------
    1. Environment variable      NETZILLA_ABUSEIPDB_API_KEY=...
    2. Your own saved key        ~/.config/netzilla/config.toml
+                                (%APPDATA%\netzilla\config.toml on Windows)
 
 
  Adding or changing a key
@@ -1655,8 +1876,9 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
  SHARING NETZILLA
  ----------------
  There are no keys to strip first. Your own keys typed on SETTINGS live only
- in ~/.config/netzilla/config.toml (mode 0600), never in the netzilla folder,
- so a copy of the folder is safe to pass along as it is.
+ in ~/.config/netzilla/config.toml (mode 0600; on Windows in
+ %APPDATA%\netzilla\config.toml, inside your own profile), never in the
+ netzilla folder, so a copy of the folder is safe to pass along as it is.
 
  Older copies of netzilla could carry keys in a bundled file,
  src/netzilla/data/default_credentials.toml. netzilla no longer reads or
@@ -1847,6 +2069,10 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
      termcaps.py       which terminal is this? XTVERSION, kitty graphics and
                        feature queries, cell size, tmux/SSH, environment
                        fallbacks; decides pixel or text graphs
+     hostos.py         which system this is (Linux, macOS, Windows) and all
+                       that differs by it: where settings live, where a tool
+                       is installed off PATH, the apt/brew/winget command
+                       for a missing one, admin rights, tools' code pages
      graphics/         kitty.py (the kitty graphics protocol with Unicode
                        placeholders, image upload and freeing), plot.py
                        (the pixel drawings, with Pillow), charts.py (each
@@ -1874,7 +2100,11 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
                        4.0 adds cfspeed (the built-in Cloudflare speed test);
                        4.1 adds sysinfo; 4.2 adds bluetooth (scanning via
                        bleak, decoding broadcasts, device guesses, distance,
-                       tracker checks)
+                       tracker checks); 4.6 adds winapi (Windows' IP Helper
+                       API: adapters, counters, connections and their
+                       programs) and wlanapi (Windows' Native Wi-Fi API:
+                       scans, signal and the joined network), both through
+                       ctypes
      screens/          one module per tab; all inherit screens/base.py. 2.0 adds
                        lan, config_review and creds; 4.3 adds picking (pick
                        a row of a live list, and show only it)
@@ -1925,6 +2155,12 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
                        own, rolling out and looping), its frames in pixels
                        and characters, and DASH keeping it moving only
                        while it is on screen
+     test_v46.py       Windows and macOS: the Windows API structures built
+                       byte by byte, netsh/netstat/tracert/pathping output
+                       in other languages, macOS's ifconfig, netstat,
+                       system_profiler and airport output, WHOIS and TLS
+                       without the programs, and every tab's TOOL CHECK
+                       and help cards run as each system
      conftest.py       stubs out every real LAN probe, so running the tests
                        never sends a packet to the devices on your network
 
@@ -1939,12 +2175,13 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
      pip install -e ".[dev]"
      pytest -q
 
- 859 checks, about four minutes. No network calls, no root, and no real API
- key is used or printed — HTTP is served by httpx's MockTransport using the
- example responses from each vendor's documentation, the LAN/DHCP/SNMP/NTP
- protocol logic is exercised as pure functions, and the terminal is a fake
- that answers netzilla's start-up questions the way kitty, Ghostty, tmux and
- others do.
+ 927 checks, about five minutes, run on Linux: macOS and Windows are tested
+ by faking them, with their tools' recorded output. No network calls, no
+ root, and no real API key is used or printed — HTTP is served by httpx's
+ MockTransport using the example responses from each vendor's
+ documentation, the LAN/DHCP/SNMP/NTP protocol logic is exercised as pure
+ functions, and the terminal is a fake that answers netzilla's start-up
+ questions the way kitty, Ghostty, tmux and others do.
 
 
 -------------------------------------------------------------------------------
@@ -1953,7 +2190,39 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
 
  "netzilla: command not found"
      Open a new terminal, or run ~/.local/bin/netzilla. `pipx ensurepath`
-     fixes it permanently.
+     fixes it permanently. On Windows the message reads "netzilla is not
+     recognized…": open a new Windows Terminal, or run `py -m pipx
+     ensurepath` again; netzilla.exe is in %USERPROFILE%\.local\bin.
+
+ Windows: borders look broken or the colours are missing
+     The old console window can't draw netzilla properly. Run it in Windows
+     Terminal (Windows 11 has it; on Windows 10:
+     winget install Microsoft.WindowsTerminal).
+
+ Windows: WIFI > SCAN is empty
+     Windows 11 24H2 and later hide Wi-Fi networks from apps that may not
+     use your location. Turn on Settings > Privacy & security > Location,
+     and "Let desktop apps access your location" on the same page. WIFI >
+     TOOL CHECK says when this is the reason. Otherwise: Wi-Fi on, Airplane
+     mode off.
+
+ Windows: CAPTURE says Npcap is not installed
+     Wireshark captures through Npcap, and winget's Wireshark install
+     leaves it out. Get it from https://npcap.com (or run Wireshark's own
+     installer and tick Npcap), then press TOOL CHECK again. If Npcap was
+     installed for Administrators only, start Windows Terminal with "Run as
+     administrator".
+
+ macOS: WIFI > SCAN shows no BSSIDs, or names as <redacted>
+     macOS 14.4 and later keep access points' MAC addresses from
+     command-line tools, so BSSID and the AP maker stay blank there. Names
+     shown as <redacted> need Location Services for your terminal app:
+     System Settings > Privacy & Security > Location Services.
+
+ macOS: "mtr needs root on macOS"
+     Homebrew's mtr can't send its probes as an ordinary user. Press
+     AUTHENTICATE on the CAPTURE tab once and netzilla runs mtr through
+     that sudo session, or start netzilla with  sudo netzilla
 
  Graphs are drawn with text in kitty or Ghostty
      Run `netzilla --terminal` in that window: the last line, "Why", names
@@ -2047,13 +2316,15 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
      password once and neither tab asks again until netzilla exits.
 
  WIFI > BLUETOOTH says Bluetooth is off, unavailable or not running
-     The card says which, and the fix. In short:
+     The card says which, and the fix. In short, on Linux:
          rfkill unblock bluetooth             # if it is blocked
          bluetoothctl power on                # if it is off
          sudo systemctl enable --now bluetooth   # if bluetoothd is not running
-     TOOL CHECK shows each of these. A virtual machine (Hyper-V,
-     VirtualBox, WSL) normally cannot see the host's Bluetooth radio, so
-     run netzilla on the machine itself.
+     On macOS and Windows, turn Bluetooth on in Control Center or quick
+     settings; on macOS, also allow your terminal app under System Settings
+     > Privacy & Security > Bluetooth. TOOL CHECK shows each of these. A
+     virtual machine (Hyper-V, VirtualBox, WSL) normally cannot see the
+     host's Bluetooth radio, so run netzilla on the machine itself.
 
  WIFI > BLUETOOTH lists the same phone more than once
      Phones, watches and many earbuds change their Bluetooth address every
@@ -2081,7 +2352,8 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
      braille glyphs (the text spectrum on WIFI is drawn in braille dots).
 
  A tab says a tool is not installed
-     DIAG -> TOOL CHECK prints the exact apt command.
+     DIAG -> TOOL CHECK prints the exact command for your system (apt, brew
+     or winget), or what netzilla uses instead where the tool doesn't exist.
 
  CAPTURE: TOOL CHECK says you may NOT run dumpcap
      dumpcap is installed but is root:wireshark 0750, and you are not in that
@@ -2160,9 +2432,13 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
      DHCP uses privileged/raw ports (UDP 67/68). Run netzilla with sudo:
          sudo netzilla
      Your config and keys are read from your own ~/.config/netzilla either way.
+     On Windows it can't run at all: Windows' DHCP Client service keeps
+     UDP/68 for itself. Run it from Linux or macOS on the same network.
 
  LAN: SYSLOG CATCH receives nothing
-     Without root it listens on udp/1514, not 514; the result says which.
+     On Linux without root it listens on udp/1514, not 514; the result says
+     which. (macOS and Windows let it listen on 514 as any user; there,
+     allow Python through the firewall when asked.)
      Point the device at that port (Cisco: logging host <ip> transport udp
      port 1514), allow it through the firewall (sudo ufw allow 1514/udp),
      and self-test from this machine while it listens:
@@ -2193,24 +2469,30 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
      or passwordless sudo — whichever it finds. The cleanest fix is the
      capability, granted once, after which no sudo is involved at all:
          sudo setcap cap_net_raw+ep $(which iftop)
-     `sudo netzilla` also works. LIVE RATES needs none of this.
+     `sudo netzilla` also works. LIVE RATES needs none of this. On macOS
+     the lasting fix is Wireshark's ChmodBPF (brew install --cask
+     wireshark-app, then log out and back in); iftop then needs no sudo.
 
  INT: VNSTAT REPORT says there is no data yet
      vnstat only knows what its collector has recorded since it started:
          sudo apt install -y vnstat
          sudo systemctl enable --now vnstat
+     (macOS: brew install vnstat, then sudo brew services start vnstat.)
      Daily totals appear the same day; monthly totals fill in over the month.
 
  INT: BMON SNAPSHOT says the columns could not be identified
      bmon prints unlabelled numbers and its output differs between builds.
-     netzilla names the columns by matching them against /proc/net/dev; when
-     nothing matches it refuses to guess and shows the raw capture instead.
+     netzilla names the columns by matching them against /proc/net/dev
+     (netstat -ib on macOS); when nothing matches it refuses to guess and
+     shows the raw capture instead.
      LIVE RATES gives the same figures with units attached.
 
  LAN: SNMP POLL says "net-snmp not installed"
      netzilla uses the system SNMP tools. Install them:
          sudo apt install snmp
      Then check the device's community string and that UDP/161 is reachable.
+     macOS ships them already. Windows has no current Net-SNMP release, so
+     poll from Linux or macOS.
 
  LAN: SWEEP finds nothing
      Hosts may block ICMP, or you may be off-segment. Hosts already in the ARP
@@ -2312,6 +2594,11 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
 
      pipx uninstall netzilla
      rm -rf ~/.config/netzilla          # your overrides, cache, snapshots
+
+ On Windows (PowerShell):
+
+     pipx uninstall netzilla
+     Remove-Item -Recurse $env:APPDATA\netzilla
 
 
 ===============================================================================

@@ -105,6 +105,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _safe_streams()
     try:
         return _main(argv)
     except BrokenPipeError:
@@ -119,6 +120,22 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, ValueError):
             pass
         return 1
+
+
+def _safe_streams() -> None:
+    """A Windows console or pipe may use a legacy code page that has no '—'
+    or '→'; print a '?' for such a character rather than stop with a
+    UnicodeEncodeError."""
+    from . import hostos
+
+    if not hostos.is_windows():
+        return
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            if (stream.encoding or "").lower().replace("-", "") != "utf8":
+                stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
 
 
 def _main(argv: list[str] | None = None) -> int:
@@ -393,7 +410,10 @@ async def _sweep(target: str):
     except ValueError as exc:
         raise ValidationError(str(exc)) from exc
     except FileNotFoundError:
-        return _fail("ping is not installed (sudo apt install iputils-ping)")
+        from . import hostos
+
+        return _fail("ping is not installed (sudo apt install iputils-ping)"
+                     if hostos.is_linux() else "ping was not found on this PATH")
     live = result["live"]
     found = await devices.identify(
         live + result.get("arp_only", []), context=context,

@@ -78,7 +78,8 @@ def ookla_command() -> str | None:
         return None
     try:
         out = subprocess.run(
-            [path, "--version"], capture_output=True, text=True, timeout=10
+            [path, "--version"], capture_output=True, text=True, timeout=10,
+            encoding="utf-8", errors="replace",
         )
     except Exception:
         return None
@@ -176,8 +177,10 @@ def _from_speedtest_cli_dict(
 
 
 def _run_json(cmd: list[str]) -> dict:
+    # Both CLIs write their JSON as UTF-8, whatever the console's code page.
     proc = subprocess.run(
-        cmd, capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT
+        cmd, capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT,
+        encoding="utf-8", errors="replace",
     )
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip().splitlines()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
+from .. import hostos
 from ..clients import crtsh, ssllabs
 from ..local import tls_quick
 from ..render import group, kv_panel, table_panel, text_panel, verdict_line
@@ -155,19 +156,21 @@ class SSLTLSPane(LookupPane):
     async def _openssl(self, host: str, port: int) -> None:
         await self.begin(f"openssl s_client -connect {host}:{port}…")
         result = await tls_quick.openssl_probe(host, port)
-        await self.finish()
+        subtitle = "local · openssl s_client"
         if result.missing_tool:
-            await self.push_error(
-                "openssl not installed",
-                "Install it with:\n    sudo apt install openssl",
-            )
-            return
+            # No openssl (Windows, unless one was installed): Python's own TLS
+            # stack does the handshake instead.
+            self.progress("openssl is not installed — handshaking with Python's TLS…")
+            result = await tls_quick.python_probe(host, port)
+            subtitle = ("local · Python's TLS (openssl is not installed — "
+                        + hostos.install_hint("openssl") + ")")
+        await self.finish()
         await self.push(
             text_panel(
                 self.palette,
-                f"openssl handshake — {host}:{port}",
+                f"TLS handshake — {host}:{port}",
                 result.output or result.error or "No output.",
-                subtitle="local · openssl s_client",
+                subtitle=subtitle,
             )
         )
 

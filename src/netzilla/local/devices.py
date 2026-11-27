@@ -349,8 +349,9 @@ class _Collector(asyncio.DatagramProtocol):
     def error_received(self, exc) -> None:
         # Only a *connected* UDP socket hears about ICMP port-unreachable;
         # that is what lets a silent-but-alive host be skipped at once
-        # instead of costing the whole timeout.
-        if isinstance(exc, ConnectionRefusedError):
+        # instead of costing the whole timeout. (Windows reports it as a
+        # connection reset rather than refused.)
+        if isinstance(exc, (ConnectionRefusedError, ConnectionResetError)):
             self.refused = True
             self._finish()
 
@@ -410,6 +411,14 @@ async def udp_exchange(
 
 # ============================================================ reverse DNS
 def nameservers(path: str = "/etc/resolv.conf") -> list[str]:
+    """The resolvers this machine asks: /etc/resolv.conf on Linux and macOS
+    (macOS keeps it current), the adapters' own DNS servers on Windows."""
+    from .. import hostos
+
+    if hostos.is_windows() and path == "/etc/resolv.conf":
+        from . import netif
+
+        return netif.windows_dns(netif._windows_adapters())
     servers = []
     try:
         for line in Path(path).read_text(errors="replace").splitlines():
@@ -1443,6 +1452,10 @@ def _refine(label: str, candidates) -> str:
 NOT_A_LAN = ("tun", "tap", "wg", "gpd", "tailscale", "zt", "docker", "br-",
              "veth", "virbr", "vmnet", "vboxnet", "cni", "flannel", "ppp",
              "ipsec", "utun")
+# The same, told by kind — Windows names adapters "Ethernet 3" or "Wi-Fi",
+# whatever they are, so there the kind is all there is to go on.
+NOT_A_LAN_KINDS = ("tunnel/VPN", "WireGuard", "PPP", "virtual bridge", "docker",
+                   "container veth")
 
 
 async def local_context() -> dict:
@@ -1457,7 +1470,8 @@ async def local_context() -> dict:
     for iface in found:
         if iface.get("kind") == "loopback":
             continue
-        lan_like = not iface.get("name", "").startswith(NOT_A_LAN)
+        lan_like = not iface.get("name", "").startswith(NOT_A_LAN) \
+            and iface.get("kind") not in NOT_A_LAN_KINDS
         for addr in iface.get("addresses") or []:
             try:
                 interface = ipaddress.ip_interface(addr)

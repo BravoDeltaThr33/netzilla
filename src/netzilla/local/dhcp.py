@@ -22,6 +22,8 @@ import socket
 import struct
 import time
 
+from .. import hostos
+
 MAGIC_COOKIE = bytes([99, 130, 83, 99])
 SERVER_PORT = 67
 CLIENT_PORT = 68
@@ -154,13 +156,24 @@ async def detect(listen_seconds: float = 5.0, mac: str | None = None) -> list[di
         sock.bind(("", CLIENT_PORT))
     except PermissionError as exc:
         raise PermissionError(
+            WINDOWS_PORT_HELP if hostos.is_windows() else
             "Binding UDP/68 requires root. Run: sudo netzilla"
         ) from exc
     except OSError as exc:
         raise PermissionError(
+            WINDOWS_PORT_HELP if hostos.is_windows() else
             f"Could not open the DHCP client port ({exc}). "
             "Another DHCP client may be using it, or this needs root."
         ) from exc
+
+    if hostos.is_windows():
+        # Windows' default event loop has no datagram sock_recvfrom before
+        # Python 3.11, so the listening runs on a worker thread instead.
+        try:
+            return await asyncio.to_thread(_listen_blocking, sock, packet, xid,
+                                           listen_seconds)
+        finally:
+            sock.close()
 
     offers: dict[str, dict] = {}
     loop = asyncio.get_running_loop()
@@ -183,6 +196,34 @@ async def detect(listen_seconds: float = 5.0, mac: str | None = None) -> list[di
                 offers.setdefault(key, offer)
     finally:
         sock.close()
+    return list(offers.values())
+
+
+WINDOWS_PORT_HELP = (
+    "Windows' DHCP Client service holds UDP/68, the port DHCP offers come "
+    "back to, so netzilla can't listen there while that service runs. "
+    "ROGUE DHCP works from Linux or macOS on the same network."
+)
+
+
+def _listen_blocking(sock, packet: bytes, xid: int, listen_seconds: float) -> list[dict]:
+    """detect()'s send-and-listen with a blocking socket (Windows)."""
+    offers: dict[str, dict] = {}
+    sock.setblocking(True)
+    sock.settimeout(0.5)
+    sock.sendto(packet, ("255.255.255.255", SERVER_PORT))
+    deadline = time.monotonic() + listen_seconds
+    while time.monotonic() < deadline:
+        try:
+            data, addr = sock.recvfrom(2048)
+        except socket.timeout:
+            continue
+        except OSError:
+            break
+        offer = parse_offer(data, expected_xid=xid)
+        if offer:
+            offer["from"] = addr[0]
+            offers.setdefault(offer.get("server_id") or addr[0], offer)
     return list(offers.values())
 
 

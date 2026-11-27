@@ -701,8 +701,8 @@ class DashboardPane(LookupPane):
         name = self._pulse_iface or self._network.get("iface") or ""
         if not name or not netif.read_counters():
             return text_panel(palette, "Network pulse",
-                              "Live rates read /proc/net/dev, which this system "
-                              "doesn't have (Linux only).", style=palette.muted)
+                              f"Live rates read {netif.counter_source()}, which "
+                              "could not be read here.", style=palette.muted)
         inner = max(20, cell_width - 4)              # panel border and padding
         side_by_side = inner >= 2 * 34 + 3
         each = (inner - 3) // 2 if side_by_side else inner

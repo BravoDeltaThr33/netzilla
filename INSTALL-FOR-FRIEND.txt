@@ -1,11 +1,11 @@
 ===============================================================================
- Installing netzilla 4.5.0
+ Installing netzilla 4.6.0
 ===============================================================================
 
 netzilla is a terminal (text-based) app for network admins — Wi-Fi and LAN
 diagnostics, subnet maths, DNS/WHOIS, TLS checks, BGP/routing lookups, a
 speed test, threat intel and more, all in one tabbed screen. Every data
-source it uses is free.
+source it uses is free. It runs on Linux, macOS and Windows.
 
 This copy has no API keys in it, so it is safe to keep and pass along.
 Every tab works without a key; four reputation sources (AbuseIPDB,
@@ -37,7 +37,7 @@ Open a terminal (Ctrl+Alt+T) and run these one at a time.
 
  4. Unpack and install netzilla:
         cd ~/Downloads
-        tar -xzf netzilla-4.5.0-friend.tar.gz
+        tar -xzf netzilla-4.6.0-friend.tar.gz
         cd netzilla
         pipx install .
     Optional (adds the OOKLA TEST on the SPEED tab; the built-in speed test
@@ -61,15 +61,15 @@ Open Terminal (or iTerm2) and run these one at a time.
     Follow the "Next steps" it prints (usually a couple of lines to add to
     your shell profile). Skip this step if `brew --version` already works.
 
- 2. Install Python, pipx, and two extra tools netzilla uses:
-        brew install python pipx mtr net-snmp
+ 2. Install Python, pipx, and the one extra tool netzilla uses:
+        brew install python pipx mtr
         pipx ensurepath
-    (macOS already has dig, whois, traceroute, ping and openssl built in.)
-    Close and reopen your terminal after this.
+    (macOS already has dig, whois, traceroute, ping, openssl and the SNMP
+    tools built in.) Close and reopen your terminal after this.
 
  3. Unpack and install netzilla:
         cd ~/Downloads
-        tar -xzf netzilla-4.5.0-friend.tar.gz
+        tar -xzf netzilla-4.6.0-friend.tar.gz
         cd netzilla
         pipx install .
     Optional (adds the OOKLA TEST on the SPEED tab):
@@ -78,7 +78,45 @@ Open Terminal (or iTerm2) and run these one at a time.
  4. Run it:
         netzilla
     If macOS's firewall asks whether to allow incoming connections when you
-    use LAN -> SWEEP or SYSLOG CATCH, click Allow — that's expected.
+    use LAN -> SWEEP or SYSLOG CATCH, click Allow — that's expected. The
+    first Bluetooth scan asks whether your terminal app may use Bluetooth:
+    allow it.
+
+
+-------------------------------------------------------------------------------
+ WINDOWS (Windows 10 version 1809 or newer, Windows 11)
+-------------------------------------------------------------------------------
+
+Open Windows Terminal (on Windows 11: right-click Start, then Terminal) and
+run these one at a time.
+
+ 1. Install Python (skip this if `py --version` already prints 3.10 or
+    newer):
+        winget install Python.Python.3.13
+    Close and reopen Windows Terminal after this.
+
+ 2. Install pipx:
+        py -m pip install --user pipx
+        py -m pipx ensurepath
+    Close and reopen Windows Terminal after this.
+
+ 3. Unpack and install netzilla:
+        cd ~/Downloads
+        tar -xzf netzilla-4.6.0-friend.tar.gz
+        cd netzilla
+        pipx install .
+    (If `pipx` is not found, type `py -m pipx install .` instead.)
+
+ 4. Run it:
+        netzilla
+    Use Windows Terminal rather than the old console window, which draws
+    netzilla badly. Nothing else needs installing: netzilla uses Windows'
+    own tools and brings its own WHOIS and DNS lookups.
+    On Windows 11 24H2 or newer, WIFI -> SCAN stays empty until desktop
+    apps may use your location: Settings -> Privacy & security ->
+    Location, and turn on "Let desktop apps access your location".
+    The first time SYSLOG CATCH runs, Windows Firewall asks about Python:
+    allow it on private networks.
 
 
 -------------------------------------------------------------------------------
@@ -87,13 +125,13 @@ Open Terminal (or iTerm2) and run these one at a time.
 
  Same steps, but install with --force (your theme and settings are kept):
         cd ~/Downloads
-        tar -xzf netzilla-4.5.0-friend.tar.gz
+        tar -xzf netzilla-4.6.0-friend.tar.gz
         cd netzilla
         pipx install --force .
 
 
 -------------------------------------------------------------------------------
- EITHER OS — a few things worth knowing
+ ANY OS — a few things worth knowing
 -------------------------------------------------------------------------------
 
  * The app opens on DASH: this machine, your network, the terminal, local
@@ -107,14 +145,20 @@ Open Terminal (or iTerm2) and run these one at a time.
    BT TRACKERS checks for a tracker that keeps showing up near you. It only
    listens; it never pairs with anything. Click a device (or a network in
    LIVE AIR) to graph it; click it again to show only that one.
- * In kitty (0.28+) or Ghostty (1.0+) the graphs are drawn as real images;
-   in any other terminal they are drawn with characters. `netzilla
-   --terminal` shows what netzilla detected.
+ * In kitty (0.28+) or Ghostty (1.0+), on Linux or macOS, the graphs are
+   drawn as real images; in any other terminal (Windows Terminal
+   included) they are drawn with characters. `netzilla --terminal` shows
+   what netzilla detected.
  * Hover over (or Tab to) any button and an instructions card appears —
    what to type, when you'd use it, and a safe public target to try.
- * On the LAN tab, ROGUE DHCP and SYSLOG CATCH bind privileged ports, so
-   they need `sudo netzilla` to fully work. SYSLOG CATCH still works
-   without sudo — it uses port 1514 instead of 514 automatically.
+ * On Linux, the LAN tab's ROGUE DHCP and SYSLOG CATCH bind privileged
+   ports, so they need `sudo netzilla` to fully work. SYSLOG CATCH still
+   works without sudo — it uses port 1514 instead of 514 automatically.
+   On macOS only ROGUE DHCP needs sudo; on Windows nothing needs
+   Administrator, and ROGUE DHCP can't run there at all.
+ * A few local tools work differently on macOS and Windows; each tab's
+   TOOL CHECK says what applies on yours, and README.txt section 3d lists
+   it all.
  * Only scan or sweep networks and hosts you own or are allowed to test.
 
 The full README.txt inside the archive has everything else: every tab

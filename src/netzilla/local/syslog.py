@@ -5,9 +5,11 @@ troubleshooting session and tails whatever devices send at it — no NMS to
 install, no config to persist. Point a switch/router/firewall's logging at this
 box's IP for a minute and watch its messages arrive live.
 
-Binding 514 needs root (privileged port), so the listener raises PermissionError
-without it; the LAN tab then falls back to FALLBACK_PORT (1514) by itself, or
-uses whatever port is typed in its target field. The RFC 3164 / RFC 5424 line parser is pure and unit-tested.
+Binding 514 needs root on Linux (privileged port), so the listener raises
+PermissionError without it; the LAN tab then falls back to FALLBACK_PORT (1514)
+by itself, or uses whatever port is typed in its target field. Windows and
+macOS let any user listen on 514. The RFC 3164 / RFC 5424 line parser is pure
+and unit-tested.
 """
 
 from __future__ import annotations
@@ -15,6 +17,8 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+
+from .. import hostos
 
 DEFAULT_PORT = 514
 FALLBACK_PORT = 1514  # unprivileged; used automatically without root
@@ -101,6 +105,13 @@ class SyslogCollector:
                 _Proto, local_addr=("0.0.0.0", self.port)
             )
         except PermissionError as exc:
+            if hostos.is_windows():
+                raise PermissionError(
+                    f"Windows refused UDP/{self.port}: another program holds it, or it "
+                    f"is in a range Windows keeps for itself. Type another port "
+                    f"(e.g. {FALLBACK_PORT}) in the target field and log your device "
+                    "there."
+                ) from exc
             raise PermissionError(
                 f"Binding UDP/{self.port} needs root. Run `sudo netzilla`, or "
                 f"type a port of 1024 or above (e.g. {FALLBACK_PORT}) in the "

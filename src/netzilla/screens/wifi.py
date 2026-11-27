@@ -49,6 +49,7 @@ from rich.console import Group
 from rich.text import Text
 from textual.widgets import Static
 
+from .. import hostos
 from ..local import bluetooth, capture, devices, flows, lan, netif, wifi, wifitools
 from ..colours import signal_colour
 from ..graphics.charts import LineGraph, SpectrumGraph
@@ -101,7 +102,8 @@ class WifiPane(Picking, CaptureAccess, LookupPane):
         Action("packets", "PACKETS"),
         Action("ports", "PORTS", primary=False),
         Action("export", "EXPORT CSV", primary=False),
-        Action("iwscan", "DEEP SCAN (iw)", primary=False),
+        Action("iwscan", "DEEP SCAN (iw)" if hostos.is_linux() else "DEEP SCAN",
+               primary=False),
         Action("tools", "TOOL CHECK", primary=False),
         Action("bttrackers", "BT TRACKERS"),
     )
@@ -436,7 +438,7 @@ class WifiPane(Picking, CaptureAccess, LookupPane):
             verdict_line(
                 self.palette, "Scan",
                 f"{len(aps)} access points via {backend}"
-                + (" (approx. dBm from link quality)" if backend == "nmcli" else "")
+                + (" (approx. dBm from link quality)" if backend in ("nmcli", "netsh") else "")
                 + " — LIVE AIR keeps this updating",
                 "ok",
             )
@@ -490,7 +492,7 @@ class WifiPane(Picking, CaptureAccess, LookupPane):
             if ms is not None:
                 ap["seen_at"] = now - ms / 1000.0
                 ages.append(ms / 1000.0)
-        if iface and have_iw():
+        if iface and wifitools.live_link_available():
             link = await wifitools.link_now(iface)
             if link.get("connected") and link.get("signal_dbm") is not None:
                 mine = (link.get("bssid") or "").lower()
@@ -853,6 +855,15 @@ class WifiPane(Picking, CaptureAccess, LookupPane):
             f"worst {min(history)} dBm", "info"))
 
     # ------------------------------------------------------- link health
+    @staticmethod
+    def _link_tools() -> str:
+        """What LINK HEALTH asks, for a message saying it got nothing."""
+        if hostos.is_windows():
+            return "the Windows Wi-Fi API"
+        if hostos.is_macos():
+            return "system_profiler"
+        return "nmcli and iw both"
+
     async def _link(self) -> None:
         iface = self._require_iface()
         every = self._every(self.LINK_EVERY)
@@ -863,7 +874,7 @@ class WifiPane(Picking, CaptureAccess, LookupPane):
             await self.push_warning(
                 "Not associated",
                 f"{iface} doesn't look connected to any access point right now "
-                "— nmcli and iw both came back empty. Check TOOL CHECK if "
+                f"— {self._link_tools()} came back empty. Check TOOL CHECK if "
                 "that's unexpected.",
             )
             return
@@ -923,15 +934,16 @@ class WifiPane(Picking, CaptureAccess, LookupPane):
                 [-90 + min(v, 30) / 30 * 60 for v in retry[-spark:]])
                 + f"  {retry[-1]:.1f}% of frames, last {every:g}s"]
         charts.update(self._chart(
-            "Signal and link, live", lines or ["iw is needed for a live signal graph — "
-                                               "TOOL CHECK shows how to add it"],
+            "Signal and link, live", lines or [
+                "iw is needed for a live signal graph — TOOL CHECK shows how to add it"
+                if hostos.is_linux() else "no signal reading yet — waiting for the next one"],
             signal_colour(signal) if signal is not None else "info",
             subtitle=f"newest on the right · every {every:g}s", key="link",
         ))
         health.update(kv_panel(
             self.palette, f"{iface} — link health",
             wifitools.link_rows(info, ap, vendor),
-            subtitle="iw for dBm, bitrate and retries · nmcli for addresses and DNS",
+            subtitle=wifitools.link_sources_note(),
         ))
         stats.update(kv_panel(self.palette, "While watching", watch.rows(),
                               subtitle="retries counted per interval, not since joining"))
@@ -970,9 +982,7 @@ class WifiPane(Picking, CaptureAccess, LookupPane):
             result = await lan.sweep(str(network), progress=self.progress)
         except FileNotFoundError:
             await self.finish()
-            await self.push_error(
-                "ping not installed", "Install it with:\n    sudo apt install iputils-ping"
-            )
+            await self.push_error("ping not installed", hostos.missing_tool_text("ping"))
             return
         live = result["live"]
         extra = result.get("arp_only") or []
@@ -1121,8 +1131,8 @@ class WifiPane(Picking, CaptureAccess, LookupPane):
             await self.finish()
             await self.push_error(
                 "No counters for that interface",
-                f"{netif.PROC_NET_DEV} has no line for {iface}. TRAFFIC is "
-                "Linux-only and needs the interface to be up.",
+                f"{netif.counter_source()} has nothing for {iface}. TRAFFIC "
+                "needs the interface to be up.",
             )
             return
         await self.begin(f"Watching traffic on {iface}…")
@@ -1158,7 +1168,7 @@ class WifiPane(Picking, CaptureAccess, LookupPane):
                 f"Upload — {up:.2f} Mbit/s",
                 [self._rate_graph(watch.up, rate_label, height=4)], "info", key="up"))
             totals.update(kv_panel(self.palette, "Totals", watch.rows(),
-                                   subtitle="from /proc/net/dev — no root"))
+                                   subtitle=f"from {netif.counter_source()} — no root"))
             talkers.update(table_panel(
                 self.palette, "Who this machine is talking to over the Wi-Fi",
                 ["Remote", "Name / where", "Conns", "Ports", "Process"],
@@ -1352,7 +1362,7 @@ class WifiPane(Picking, CaptureAccess, LookupPane):
             await self.finish()
             await self.push_warning(problem.title, problem.message)
             await self.push(text_panel(self.palette, "Getting Bluetooth going",
-                                       bluetooth.INSTALL_HINTS, style=self.palette.accent))
+                                       bluetooth.install_hints(), style=self.palette.accent))
             return
         self._bt_backend = getattr(scanner, "backend", "") or "bleak"
         state = {"running": True, "started": time.monotonic(), "ended": None}
@@ -1792,22 +1802,43 @@ class WifiPane(Picking, CaptureAccess, LookupPane):
         names = await self._load_interfaces()
         from ..local.runner import have
 
-        rows = [
-            ("Wireless interfaces", ", ".join(names) or "none found"),
-            ("nmcli (SCAN, LIVE AIR — no root)", have("nmcli")),
-            ("iw (exact dBm, LINK HEALTH)", have("iw")),
-            ("rfkill (radio block check)", have("rfkill")),
-            ("ping (DEVICES)", have("ping")),
-            ("ss (TRAFFIC)", have("ss") or have("netstat")),
-            ("tshark (PACKETS)", capture.find_tool("tshark") or False),
-        ]
+        if hostos.is_windows():
+            scanner = wifi.wlanapi.available() or have("netsh")
+            rows = [
+                ("Wireless interfaces", ", ".join(names) or "none found"),
+                ("Windows Wi-Fi API (SCAN, LIVE AIR, LINK HEALTH)", wifi.wlanapi.available()),
+                ("netsh (fallback)", have("netsh")),
+                ("ping (DEVICES)", have("ping")),
+                ("tshark (PACKETS)", capture.find_tool("tshark") or False),
+            ]
+        elif hostos.is_macos():
+            scanner = have("system_profiler") or wifi.airport_usable()
+            rows = [
+                ("Wireless interfaces", ", ".join(names) or "none found"),
+                ("system_profiler (SCAN, LIVE AIR, LINK HEALTH)", have("system_profiler")),
+                ("airport (BSSIDs and a fast live signal, macOS 14.3 and older)",
+                 wifi.airport_usable()),
+                ("ping (DEVICES)", have("ping")),
+                ("tshark (PACKETS)", capture.find_tool("tshark") or False),
+            ]
+        else:
+            scanner = have("nmcli") or have("iw")
+            rows = [
+                ("Wireless interfaces", ", ".join(names) or "none found"),
+                ("nmcli (SCAN, LIVE AIR — no root)", have("nmcli")),
+                ("iw (exact dBm, LINK HEALTH)", have("iw")),
+                ("rfkill (radio block check)", have("rfkill")),
+                ("ping (DEVICES)", have("ping")),
+                ("ss (TRAFFIC)", have("ss") or have("netstat")),
+                ("tshark (PACKETS)", capture.find_tool("tshark") or False),
+            ]
         await self.finish()
         await self.push(
             verdict_line(
                 self.palette, "Wi-Fi",
-                "ready — SCAN should work" if names and (have("nmcli") or have("iw"))
+                "ready — SCAN should work" if names and scanner
                 else "no wireless interface or scan tool found",
-                "ok" if names and (have("nmcli") or have("iw")) else "warn",
+                "ok" if names and scanner else "warn",
             )
         )
         await self.push(kv_panel(self.palette, "What netzilla found", rows))
@@ -1823,9 +1854,9 @@ class WifiPane(Picking, CaptureAccess, LookupPane):
         await self.push(kv_panel(self.palette, "Bluetooth", bt_rows))
         await self.push(
             text_panel(self.palette, "Setting up scanning",
-                       wifi.INSTALL_HINTS + "\n\nPACKETS uses the CAPTURE tab's "
+                       wifi.install_hints() + "\n\nPACKETS uses the CAPTURE tab's "
                        "permission — see CAPTURE → TOOL CHECK / FIX PERMISSIONS.\n\n"
-                       + bluetooth.INSTALL_HINTS,
+                       + bluetooth.install_hints(),
                        style=self.palette.accent)
         )
         await self.push_warning(
@@ -1848,9 +1879,3 @@ BT_ADVICE = (
 # BLUETOOTH's table.
 BT_COLUMNS = ["Name", "Device", "Vendor", "MAC", "dBm", "History", "Distance",
               "First seen", "Last seen", "Flag"]
-
-
-def have_iw() -> bool:
-    from ..local.runner import have
-
-    return have("iw")

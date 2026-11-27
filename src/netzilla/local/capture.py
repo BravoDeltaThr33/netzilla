@@ -17,7 +17,11 @@ arrow, destination, protocol, length, info — has been stable for years.
 
 Capturing needs privilege. On Debian/Ubuntu/Mint the usual arrangement is the
 `wireshark` group plus capabilities on dumpcap rather than running as root,
-and permission_report() explains which of those are in place.
+and permission_report() explains which of those are in place. On macOS it is
+read access to /dev/bpf*, which Wireshark's ChmodBPF gives the access_bpf
+group (or root, through a sudo session); on Windows it is Npcap, which
+Wireshark installs and which lets every account capture unless it was
+installed for Administrators only. tcpdump is not available on Windows.
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ import re
 import shutil
 from pathlib import Path
 
+from .. import hostos
 from .elevation import SESSION
 from .runner import CommandResult, LiveProcess, have, run, run_for
 
@@ -88,6 +93,9 @@ def have_both() -> bool:
 
 
 def is_root() -> bool:
+    """Root — or, on Windows, an elevated Administrator."""
+    if hostos.is_windows():
+        return hostos.is_admin()
     try:
         return os.geteuid() == 0
     except AttributeError:
@@ -132,9 +140,11 @@ def find_tool(name: str) -> str:
     allowed to run is not a dumpcap that is missing, and saying so sends
     people off installing something they already have.
     """
-    found = shutil.which(name)
+    found = shutil.which(name) or hostos.locate(name)
     if found:
         return found
+    if hostos.is_windows():
+        return ""
     for directory in _ALSO_LOOK_IN:
         candidate = os.path.join(directory, name)
         if os.path.isfile(candidate):
@@ -196,6 +206,8 @@ async def dumpcap_caps() -> tuple[str, str]:
     path = dumpcap_path()
     if not path:
         return "", "dumpcap is not installed"
+    if not hostos.is_linux():
+        return "", "file capabilities are a Linux feature"
     # getcap lives in /usr/sbin, which is not on every user's PATH, so it is
     # looked up the same way dumpcap is and then run by its full path.
     getcap = find_tool("getcap")
@@ -214,11 +226,24 @@ def can_unlock() -> bool:
     Only when there is a sudo to unlock, this is not already root, and the
     session has not been unlocked already — otherwise the offer is noise.
     """
-    return have("sudo") and not is_root() and not SESSION.active
+    return hostos.has_sudo() and not is_root() and not SESSION.active
+
+
+def unlock_instead() -> bool:
+    """When capturing is blocked, should netzilla offer its one-password sudo
+    session straight away? On macOS, yes: there is no pkexec to fall back
+    on, and a session is the usual way to capture without ChmodBPF."""
+    return hostos.is_macos()
+
+
+def password_hint() -> str:
+    """Which password `sudo` wants, in the words of this system."""
+    return "your Mac login password" if hostos.is_macos() else (
+        "your login password on Mint and Ubuntu")
 
 
 async def sudo_without_password() -> bool:
-    if not have("sudo"):
+    if not hostos.has_sudo():
         return False
     return (await run(["sudo", "-n", "true"], timeout=5)).ok
 
@@ -264,7 +289,102 @@ async def permission_report(
     return (list(prefix) if prefix is not None else None), list(rows)
 
 
+# ------------------------------------------------------- Windows, macOS
+def npcap_installed(env=None) -> bool:
+    """Npcap (or the old WinPcap) — the capture driver tshark needs on
+    Windows. Wireshark's installer offers it."""
+    env = os.environ if env is None else env
+    system = os.path.join(env.get("SystemRoot") or env.get("windir") or r"C:\Windows",
+                          "System32")
+    return any(os.path.isfile(os.path.join(system, *parts))
+               for parts in (("Npcap", "wpcap.dll"), ("wpcap.dll",)))
+
+
+def npcap_admin_only() -> bool:
+    """Was Npcap installed with "restrict to Administrators only"?"""
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                            r"SYSTEM\CurrentControlSet\Services\npcap\Parameters") as key:
+            value, _kind = winreg.QueryValueEx(key, "AdminOnly")
+        return bool(value)
+    except Exception:
+        return False
+
+
+def bpf_readable(dev: str = "/dev") -> bool:
+    """Can this account open the packet filter devices (macOS)? Wireshark's
+    ChmodBPF makes /dev/bpf* readable by the access_bpf group."""
+    try:
+        candidates = sorted(Path(dev).glob("bpf*"))
+    except OSError:
+        return False
+    return any(os.access(path, os.R_OK) for path in candidates)
+
+
+def _windows_permission() -> tuple[list[str] | None, list[tuple[str, object]]]:
+    admin = hostos.is_admin()
+    npcap = npcap_installed()
+    admin_only = npcap and npcap_admin_only()
+    if not npcap:
+        prefix: list[str] | None = None
+        verdict = "blocked — Npcap is not installed (npcap.com, or tick it in Wireshark's installer)"
+    elif admin_only and not admin:
+        prefix = None
+        verdict = ("blocked — Npcap was installed for Administrators only; run netzilla "
+                   "from a terminal opened as Administrator")
+    else:
+        prefix = []
+        verdict = "ready — Npcap lets this account capture" + (
+            " (running as Administrator)" if admin else "")
+    return prefix, [
+        ("Capture permission", verdict),
+        ("Npcap installed", npcap),
+        ("Npcap limited to Administrators", admin_only),
+        ("Running as Administrator", admin),
+        ("tshark installed", bool(find_tool("tshark"))),
+        ("tcpdump", "not available on Windows — tshark does the same job"),
+        ("dumpcap", dumpcap_path() or "not installed"),
+    ]
+
+
+async def _macos_permission() -> tuple[list[str] | None, list[tuple[str, object]]]:
+    root = is_root()
+    bpf = bpf_readable()
+    sudo_ok = False if root or bpf or SESSION.active else await sudo_without_password()
+    if root:
+        prefix: list[str] | None = []
+        verdict = "ready — netzilla is running as root"
+    elif SESSION.active:
+        prefix = SESSION.prefix()
+        verdict = "ready — unlocked for this session, no more prompts"
+    elif bpf:
+        prefix = []
+        verdict = "ready — /dev/bpf is readable (Wireshark's ChmodBPF)"
+    elif sudo_ok:
+        prefix = ["sudo", "-n"]
+        verdict = "ready — using passwordless sudo"
+    else:
+        prefix = None
+        verdict = "blocked — no root, no ChmodBPF access, no sudo session yet"
+    return prefix, [
+        ("Capture permission", verdict),
+        ("Session unlocked", SESSION.active or SESSION.status()),
+        ("Running as root", root),
+        ("/dev/bpf readable (ChmodBPF)", bpf),
+        ("In 'access_bpf' group", "access_bpf" in groups()),
+        ("tshark installed", bool(find_tool("tshark"))),
+        ("tcpdump installed", have("tcpdump")),
+        ("dumpcap", dumpcap_path() or "not installed"),
+    ]
+
+
 async def _permission_report() -> tuple[list[str] | None, list[tuple[str, object]]]:
+    if hostos.is_windows():
+        return _windows_permission()
+    if hostos.is_macos():
+        return await _macos_permission()
     in_group = "wireshark" in groups()
     caps, caps_why = await dumpcap_caps()
     has_caps = "cap_net_raw" in caps.lower()
@@ -338,6 +458,12 @@ def fix_command() -> tuple[list[str] | None, str, str]:
     Runs through pkexec so the password prompt is a desktop dialog rather
     than something typed into the terminal netzilla is drawing on.
     """
+    if hostos.is_windows():
+        return None, "", ("Windows needs no permission fix — Npcap, installed "
+                          "with Wireshark, lets every account capture")
+    if hostos.is_macos():
+        return None, "", ("macOS has no pkexec; Wireshark's ChmodBPF does this "
+                          "job, or AUTHENTICATE for a sudo session")
     user = current_user()
     if not USERNAME_RE.match(user or ""):
         return None, "", f"could not work out a safe username (got {user!r})"
@@ -399,6 +525,37 @@ SETUP_STEPS = (
     "Then log out and back in — group membership only applies to new sessions.\n"
     "Check it worked with:  id -nG | grep wireshark"
 )
+
+MACOS_SETUP_STEPS = (
+    "Install Wireshark, which brings tshark and ChmodBPF:\n"
+    "    brew install --cask wireshark-app\n"
+    "    (or the installer from wireshark.org — run its 'Install ChmodBPF'\n"
+    "    package too)\n\n"
+    "ChmodBPF lets the access_bpf group capture without sudo. Log out and\n"
+    "back in afterwards so the group applies. Until then, AUTHENTICATE opens\n"
+    "a sudo session that captures for the rest of this netzilla run.\n\n"
+    "tcpdump is built into macOS and needs the same access."
+)
+
+WINDOWS_SETUP_STEPS = (
+    "Install Wireshark, which brings tshark, and Npcap, the capture driver:\n"
+    "    winget install WiresharkFoundation.Wireshark\n"
+    "    then Npcap from https://npcap.com — a winget install leaves it out\n"
+    "    (the installer from wireshark.org offers it: keep it ticked)\n\n"
+    "Leave Npcap's 'Restrict driver access to Administrators only' unticked\n"
+    "and any account can capture. If it was ticked, start netzilla from a\n"
+    "terminal opened with 'Run as administrator'.\n\n"
+    "tcpdump is not available on Windows; tshark does the same job."
+)
+
+
+def setup_steps() -> str:
+    """How to set capturing up on this system."""
+    if hostos.is_windows():
+        return WINDOWS_SETUP_STEPS
+    if hostos.is_macos():
+        return MACOS_SETUP_STEPS
+    return SETUP_STEPS
 
 
 # ------------------------------------------------------------------ tshark
@@ -621,7 +778,9 @@ def default_pcap_path(iface: str) -> str:
     from datetime import datetime
 
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    return str(Path.home() / f"netzilla-{iface or 'capture'}-{stamp}.pcapng")
+    # Windows names an interface "Wi-Fi 2" or "\\Device\\NPF_{…}": keep the
+    # file name to characters every system accepts.
+    return str(Path.home() / f"netzilla-{hostos.safe_filename(iface)}-{stamp}.pcapng")
 
 
 def pcap_details(path: str) -> list[tuple[str, object]]:

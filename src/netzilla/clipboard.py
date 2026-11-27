@@ -5,8 +5,8 @@ tables keep their columns when pasted into a ticket or a chat. Where it
 goes, best first:
 
   1. the desktop clipboard through the usual tool — wl-copy (Wayland),
-     xclip or xsel (X11), pbcopy (macOS), clip.exe (WSL) — when netzilla
-     runs on the machine whose screen you are looking at;
+     xclip or xsel (X11), pbcopy (macOS), clip.exe (Windows and WSL) — when
+     netzilla runs on the machine whose screen you are looking at;
   2. the terminal's own clipboard, via OSC 52 — the way that also works
      over SSH (kitty, Ghostty, WezTerm, iTerm2, foot, Windows Terminal…);
   3. and, when neither can be relied on, a text file as well, whose path is
@@ -113,12 +113,26 @@ def _tool_command() -> list[str] | None:
     return None
 
 
+def tool_input(command: list[str], text: str) -> tuple[bytes, dict | None]:
+    """What to feed a clipboard tool, and the environment to run it in.
+    clip.exe reads UTF-16 when the text starts with a byte-order mark (and
+    the console's code page otherwise, which mangles '—' and '·'); pbcopy
+    reads the locale's encoding, so it is told the text is UTF-8."""
+    name = os.path.basename(command[0]).lower()
+    if name == "clip.exe":
+        return ("\ufeff" + text).encode("utf-16-le"), None
+    if name == "pbcopy":
+        return text.encode("utf-8"), dict(os.environ, LC_CTYPE="UTF-8")
+    return text.encode("utf-8"), None
+
+
 def _via_tool(text: str) -> str | None:
     command = _tool_command()
     if command is None:
         return None
+    payload, env = tool_input(command, text)
     try:
-        subprocess.run(command, input=text.encode("utf-8"), timeout=TOOL_TIMEOUT,
+        subprocess.run(command, input=payload, env=env, timeout=TOOL_TIMEOUT,
                        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception:
         return None

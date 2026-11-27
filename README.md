@@ -6,7 +6,8 @@ network admin actually reaches for — plus the local tools (`dig`, `whois`,
 `openssl`, `ping`, `traceroute`, `mtr`) that no API should be replacing.
 
 Twenty-one tabs, seventeen dark colour themes, **free and open data sources
-only**, and zero setup to start using most of it. **Version 4.5.0.**
+only**, and zero setup to start using most of it. Runs on **Linux, macOS and
+Windows**. **Version 4.6.0.**
 
 - **Pixel graphs in kitty and Ghostty.** Live Wi-Fi signal, a channel
   spectrum, interface rates and the speed test are drawn as real
@@ -18,6 +19,34 @@ only**, and zero setup to start using most of it. **Version 4.5.0.**
   key, in both cases, is exercised by the test suite.
 
 ![LIVE AIR in kitty — every Wi-Fi network graphed live](docs/showcase/live-air.gif)
+
+## What's new in 4.6
+
+netzilla runs on Windows and macOS too: one codebase, the same tabs, buttons
+and keys on all three systems.
+
+| | |
+|---|---|
+| **Windows** | Interfaces, LIVE RATES and FLOW's connections (with the program behind each) from Windows' own IP Helper API; the WIFI tab from its Native Wi-Fi API — every access point with exact dBm, live signal graphs, channels and link health; BLUETOOTH through Windows' Bluetooth stack. No administrator rights needed. `tracert` and `pathping` stand in for `traceroute` and `mtr`; with no `dig` or `whois`, DNS records come over DNS-over-HTTPS and WHOIS from netzilla's own client (IANA → registry → registrar). Capture uses Wireshark with Npcap. |
+| **macOS** | The WIFI tab (`system_profiler`, or `airport` on 14.3 and older), LIVE RATES, DASH's NETWORK PULSE, WIFI → TRAFFIC and FLOW (`netstat -ib`, `netstat`, `lsof`) now work on macOS. iftop and capture need no sudo once Wireshark's ChmodBPF is installed; `mtr` runs through the sudo session AUTHENTICATE opens. DASH shows real uptime and memory. |
+| **Everywhere** | A missing tool names the command that installs it on your system (`apt`, `brew` or `winget`), or says what netzilla does instead where the tool doesn't exist. Every tab's TOOL CHECK and the instruction cards read right for the system you're on. |
+
+### What works where
+
+Every lookup over the internet works the same on all three. The local tools
+differ:
+
+| | macOS | Windows |
+|---|---|---|
+| **DNS/WHOIS** | Everything, with the `dig` and `whois` macOS ships | ALL RECORDS and REVERSE over DNS-over-HTTPS (no `dig`), so the DNS-server box is ignored; no DIG +TRACE; built-in WHOIS client |
+| **SSL/TLS** | LibreSSL's full handshake report | Python's own TLS handshake unless you install OpenSSL |
+| **LAN** | ROGUE DHCP needs sudo; SNMP tools built in | No ROGUE DHCP (Windows' DHCP Client holds UDP/68); no SNMP POLL (no current Net-SNMP for Windows) |
+| **INT** | LIVE RATES built in; iftop/vnstat/bmon from Homebrew | LIVE RATES; no iftop/vnstat/bmon |
+| **WIFI** | No BSSIDs or AP makers on 14.4+; a scan takes a few seconds; no retries or missed beacons | Everything but retries and missed beacons; Windows 11 24H2+ needs location access allowed |
+| **CAPTURE** | Wireshark with ChmodBPF, or a sudo session | Wireshark with Npcap; no tcpdump |
+| **FLOW** | Process names for your own programs without sudo | Everything |
+| **DIAG** | `mtr` needs root (AUTHENTICATE or sudo) | `tracert` and `pathping` |
+| **Pixel graphs** | kitty and Ghostty | Text graphs (Windows Terminal) |
 
 ## What's new in 4.5
 
@@ -308,15 +337,23 @@ sudo apt install -y python3 python3-venv pipx dnsutils whois openssl \
     iputils-ping traceroute mtr-tiny iw bluez
 pipx ensurepath        # then open a new terminal
 
-# macOS
-brew install python pipx mtr net-snmp
+# macOS (dig, whois, openssl and the SNMP tools come with it)
+brew install python pipx mtr
 pipx ensurepath        # then open a new terminal
 ```
 
-Then:
+```powershell
+# Windows 10 / 11, in Windows Terminal (nothing else to install)
+winget install Python.Python.3.13
+py -m pip install --user pipx
+py -m pipx ensurepath  # then open a new terminal
+```
+
+Then, on any of them:
 
 ```bash
-tar -xzf netzilla-4.5.0.tar.gz
+cd ~/Downloads
+tar -xzf netzilla-4.6.0.tar.gz
 cd netzilla
 pipx install .
 netzilla --terminal    # optional: what netzilla sees in this terminal
@@ -342,9 +379,24 @@ and `WIFI → TOOL CHECK`.
 Optional, for packet capture on CAPTURE and WIFI → PACKETS:
 
 ```bash
+# Linux
 sudo apt install -y tshark tcpdump   # answer YES to "non-superusers capture?"
 sudo usermod -aG wireshark $USER     # log out & back in afterwards
+
+# macOS: Wireshark brings ChmodBPF, so capturing needs no sudo
+brew install --cask wireshark-app    # log out & back in afterwards
 ```
+
+```powershell
+# Windows: Wireshark, plus the Npcap driver from https://npcap.com
+# (winget's install leaves Npcap out)
+winget install WiresharkFoundation.Wireshark
+```
+
+On Windows, run netzilla in Windows Terminal, and on Windows 11 24H2 or later
+allow desktop apps your location (Settings → Privacy & security → Location),
+or Windows hides the Wi-Fi networks from WIFI → SCAN. README.txt §3 has every
+step for each system and what differs on each.
 
 ## API keys
 
@@ -361,7 +413,8 @@ netzilla needs a paid plan.
 > [NVD](https://nvd.nist.gov/developers/request-an-api-key).
 
 Type them on the **SETTINGS** tab (<kbd>F2</kbd>), SAVE, then TEST KEYS.
-They are stored only in `~/.config/netzilla/config.toml` (mode 0600).
+They are stored only in `~/.config/netzilla/config.toml` (mode 0600), or
+`%APPDATA%\netzilla\config.toml` on Windows.
 
 ## Data sources
 
@@ -380,9 +433,11 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-859 tests. Everything is exercised with recorded or mocked responses and a
-fake terminal. No network calls, no root, no packets sent to the devices on
-your LAN, and no real key is ever used or printed.
+927 tests. Everything is exercised with recorded or mocked responses and a
+fake terminal; macOS and Windows are faked with their tools' recorded output
+and the Windows API structures built byte by byte. No network calls, no root,
+no packets sent to the devices on your LAN, and no real key is ever used or
+printed.
 
 ## Scope, on purpose
 

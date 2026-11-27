@@ -1,16 +1,21 @@
 """This machine at a glance, for DASH — every fact local and quick to read.
 
-Linux reads /proc and /etc; elsewhere (macOS) the same keys come back with
-whatever the platform module knows and "—" for the rest, so DASH always has
-something to show.
+Linux reads /proc and /etc; macOS answers through sysctl and vm_stat, and
+Windows through its own API (winapi.py). Anything a system cannot say comes
+back as "—", so DASH always has something to show.
 """
 
 from __future__ import annotations
 
 import os
 import platform
+import re
 import socket
+import subprocess
+import time
 from pathlib import Path
+
+from .. import hostos
 
 RESOLV_CONF = Path("/etc/resolv.conf")
 # systemd-resolved points /etc/resolv.conf at its own stub (127.0.0.53); the
@@ -25,8 +30,31 @@ def _read(path: str | Path) -> str:
         return ""
 
 
+def windows_name(release: str, version: str, edition: str = "") -> str:
+    """'Windows 11 Pro (build 22631)'. Windows 11 still calls itself release
+    "10" to older Pythons; its build number (22000 and up) is what tells."""
+    try:
+        build = int(version.split(".")[2])
+    except (IndexError, ValueError):
+        build = 0
+    if release == "10" and build >= 22000:
+        release = "11"
+    name = f"Windows {release}".strip()
+    if edition and edition not in ("", "Core"):
+        name += f" {edition}"
+    return name + (f" (build {build})" if build else "")
+
+
 def os_name() -> str:
     """'Linux Mint 22.1' from /etc/os-release, else the platform's own name."""
+    if hostos.is_windows():
+        try:
+            edition = platform.win32_edition() or ""
+        except Exception:
+            edition = ""
+        edition = {"Professional": "Pro", "Enterprise": "Enterprise",
+                   "Education": "Education"}.get(edition, "")
+        return windows_name(platform.release(), platform.version(), edition)
     for line in _read("/etc/os-release").splitlines():
         if line.startswith("PRETTY_NAME="):
             return line.split("=", 1)[1].strip().strip('"')
@@ -50,7 +78,32 @@ def uptime_text(seconds: float | None) -> str:
     return f"{minutes}m"
 
 
+def _sysctl(name: str) -> str:
+    """One sysctl value on macOS ('' when it cannot be read)."""
+    try:
+        done = subprocess.run(["sysctl", "-n", name], capture_output=True, timeout=3)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return hostos.decode(done.stdout).strip() if done.returncode == 0 else ""
+
+
+def parse_boottime(text: str, now: float | None = None) -> float | None:
+    """Seconds since boot from macOS's kern.boottime:
+    '{ sec = 1732600000, usec = 123456 } Tue Nov 26 08:26:40 2024'."""
+    match = re.search(r"sec\s*=\s*(\d+)", text or "")
+    if not match:
+        return None
+    now = time.time() if now is None else now
+    return max(0.0, now - int(match.group(1)))
+
+
 def uptime_seconds() -> float | None:
+    if hostos.is_windows():
+        from . import winapi
+
+        return winapi.uptime_seconds()
+    if hostos.is_macos():
+        return parse_boottime(_sysctl("kern.boottime"))
     text = _read("/proc/uptime").split()
     try:
         return float(text[0])
@@ -73,6 +126,48 @@ def parse_meminfo(text: str) -> tuple[int, int] | None:
     return total - available, total
 
 
+def parse_vm_stat(text: str, total: int) -> tuple[int, int] | None:
+    """(used, total) from macOS's `vm_stat`: free, inactive, speculative and
+    purgeable pages count as available — roughly what Activity Monitor
+    calls memory that is not in use."""
+    if not total:
+        return None
+    size = re.search(r"page size of (\d+) bytes", text or "")
+    page = int(size.group(1)) if size else 4096
+    pages: dict[str, int] = {}
+    for line in (text or "").splitlines():
+        name, _, value = line.partition(":")
+        value = value.strip().rstrip(".")
+        if value.isdigit():
+            pages[name.strip().lower()] = int(value)
+    available = sum(pages.get(key, 0) for key in (
+        "pages free", "pages inactive", "pages speculative", "pages purgeable"))
+    if not pages:
+        return None
+    used = max(0, total - available * page)
+    return min(used, total), total
+
+
+def memory() -> tuple[int, int] | None:
+    """(used, total) RAM in bytes on this system, or None."""
+    if hostos.is_windows():
+        from . import winapi
+
+        return winapi.memory()
+    if hostos.is_macos():
+        try:
+            total = int(_sysctl("hw.memsize") or 0)
+        except ValueError:
+            total = 0
+        try:
+            done = subprocess.run(["vm_stat"], capture_output=True, timeout=3)
+            text = hostos.decode(done.stdout)
+        except (OSError, subprocess.SubprocessError):
+            text = ""
+        return parse_vm_stat(text, total)
+    return parse_meminfo(_read("/proc/meminfo"))
+
+
 def memory_text(used_total: tuple[int, int] | None) -> str:
     if not used_total:
         return "—"
@@ -82,11 +177,12 @@ def memory_text(used_total: tuple[int, int] | None) -> str:
 
 
 def load_text() -> str:
+    cpus = os.cpu_count() or 0
     try:
         one, five, fifteen = os.getloadavg()
     except (OSError, AttributeError):
-        return "—"
-    cpus = os.cpu_count() or 0
+        # Windows keeps no load average; the CPU count is still worth showing.
+        return f"— · {cpus} CPUs" if cpus else "—"
     return f"{one:.2f} {five:.2f} {fifteen:.2f}" + (f" · {cpus} CPUs" if cpus else "")
 
 
@@ -102,6 +198,10 @@ def parse_nameservers(text: str) -> list[str]:
 def dns_servers() -> tuple[list[str], str]:
     """(servers, note): the resolvers this machine uses. Behind systemd-
     resolved's stub, the upstream servers it forwards to."""
+    if hostos.is_windows():
+        from . import netif
+
+        return netif.windows_dns(netif._windows_adapters()), ""
     servers = parse_nameservers(_read(RESOLV_CONF))
     if servers and all(s.startswith("127.0.0.53") or s == "127.0.0.54" for s in servers):
         upstream = parse_nameservers(_read(RESOLVED_UPSTREAM))
@@ -134,7 +234,7 @@ def facts() -> dict:
         "kernel": f"{platform.system()} {platform.release()}".strip() or "—",
         "uptime": uptime_text(uptime_seconds()),
         "load": load_text(),
-        "memory": memory_text(parse_meminfo(_read("/proc/meminfo"))),
+        "memory": memory_text(memory()),
         "python": platform.python_version(),
         "textual": package_version("textual"),
         "netzilla": __version__,
@@ -142,4 +242,5 @@ def facts() -> dict:
 
 
 __all__ = ["facts", "dns_servers", "parse_meminfo", "parse_nameservers",
-           "uptime_text", "memory_text", "os_name"]
+           "uptime_text", "memory_text", "os_name", "windows_name", "memory",
+           "parse_vm_stat", "parse_boottime"]

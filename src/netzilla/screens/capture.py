@@ -24,6 +24,7 @@ import time
 
 from textual.widgets import Static
 
+from .. import hostos
 from ..local import capture, devices, netif
 from ..local.elevation import SESSION
 from ..render import kv_panel, table_panel, text_panel, verdict_line
@@ -54,27 +55,29 @@ class CaptureAccess:
         on every button press.
         """
         prefix, rows = await capture.permission_report()
-        if prefix == ["pkexec"] and capture.can_unlock():
+        if (prefix == ["pkexec"] or (prefix is None and capture.unlock_instead())) \
+                and capture.can_unlock():
             if await self._unlock_for_session():
                 prefix, rows = await capture.permission_report()
         if prefix is None:
             await self.finish()
             argv, shown, why = capture.fix_command()
+            if argv is not None:
+                advice = ("Press FIX PERMISSIONS and netzilla runs the one-time "
+                          "setup for you — your desktop asks for your password:\n\n"
+                          f"{shown}\n\n"
+                          "Capturing works straight afterwards; only the group "
+                          "membership waits for your next login.")
+            elif hostos.is_linux():
+                advice = ("Run this once in a terminal, then log out and back "
+                          f"in:\n\n{capture.SETUP_STEPS}\n\n"
+                          f"(FIX PERMISSIONS is unavailable here: {why}.)")
+            else:
+                advice = capture.setup_steps()
             await self.push_error(
                 "netzilla cannot capture packets yet",
                 "Opening an interface in promiscuous mode needs privilege, and "
-                "none of the available routes are usable right now.\n\n"
-                + (
-                    "Press FIX PERMISSIONS and netzilla runs the one-time "
-                    "setup for you — your desktop asks for your password:\n\n"
-                    f"{shown}\n\n"
-                    "Capturing works straight afterwards; only the group "
-                    "membership waits for your next login."
-                    if argv is not None
-                    else "Run this once in a terminal, then log out and back "
-                    f"in:\n\n{capture.SETUP_STEPS}\n\n"
-                    f"(FIX PERMISSIONS is unavailable here: {why}.)"
-                ),
+                "none of the available routes are usable right now.\n\n" + advice,
             )
             await self.push(
                 kv_panel(self.palette, "What netzilla checked", rows)
@@ -94,13 +97,15 @@ class CaptureAccess:
             PasswordPrompt(
                 title="AUTHENTICATE ONCE FOR THIS SESSION",
                 note=(
-                    "Your sudo password (your login password on Mint and "
-                    "Ubuntu). Enter it once and every capture for the rest of "
+                    f"Your sudo password ({capture.password_hint()}). Enter it "
+                    "once and every capture for the rest of "
                     "this netzilla run goes through with no further prompt — "
                     "including when you move between tabs.\n\n"
                     "It is used once to open a sudo session and then dropped; "
-                    "netzilla does not keep it. Cancel to be asked by your "
-                    "desktop before each capture instead."
+                    "netzilla does not keep it. "
+                    + ("Cancel to leave capturing off for now."
+                       if capture.unlock_instead() else
+                       "Cancel to be asked by your desktop before each capture instead.")
                 ),
             )
         )
@@ -116,8 +121,7 @@ class CaptureAccess:
     async def _missing(self, tool: str) -> None:
         await self.push_error(
             f"{tool} is not installed",
-            f"Install it with:\n    sudo apt install -y {tool}\n\n"
-            + capture.SETUP_STEPS,
+            hostos.missing_tool_text(tool) + "\n\n" + capture.setup_steps(),
         )
 
 
@@ -129,8 +133,11 @@ class CapturePane(CaptureAccess, LookupPane):
         "memory — FILTER HELD then narrows them down as often as you like, "
         "without capturing again. CAPTURE is the bounded version. Saved files "
         "open in the full Wireshark later. FILTER HELP lists the filters worth "
-        "knowing. Capturing needs permission: netzilla asks for your password "
-        "once and does not ask again while it is running."
+        "knowing. "
+        + ("Capturing needs Wireshark with Npcap; there is no password to give."
+           if hostos.is_windows() else
+           "Capturing needs permission: netzilla asks for your password "
+           "once and does not ask again while it is running.")
     )
     FIELDS = (
         Field("iface", "Interface", "press TOOL CHECK to refresh", choices=()),
@@ -607,12 +614,23 @@ class CapturePane(CaptureAccess, LookupPane):
             )
             return
 
+        if not hostos.has_sudo():
+            await self.begin("Checking…")
+            await self.finish()
+            await self.push(text_panel(
+                self.palette, "Nothing to unlock on Windows",
+                "Windows has no sudo session to open. Npcap, which Wireshark "
+                "installs, lets every account capture; if it was installed for "
+                "Administrators only, " + hostos.admin_hint() + ".",
+            ))
+            return
+
         password = await self.app.push_screen_wait(
             PasswordPrompt(
                 title="AUTHENTICATE FOR THIS SESSION",
                 note=(
-                    "Your sudo password (your login password on Mint and "
-                    "Ubuntu). It is used once to open a sudo session and then "
+                    f"Your sudo password ({capture.password_hint()}). It is used "
+                    "once to open a sudo session and then "
                     "discarded — netzilla does not keep it. Every capture for "
                     "the rest of this run goes through without a prompt."
                 ),
@@ -635,8 +653,11 @@ class CapturePane(CaptureAccess, LookupPane):
         if not ok:
             await self.push_error(
                 "Could not unlock",
-                f"{why}.\n\nFIX PERMISSIONS sets capturing up permanently "
-                "instead, and needs no password after your next login.",
+                f"{why}.\n\n" + (
+                    "FIX PERMISSIONS sets capturing up permanently instead, and "
+                    "needs no password after your next login." if hostos.is_linux()
+                    else "Wireshark's ChmodBPF sets capturing up permanently instead "
+                    "— TOOL CHECK shows how."),
             )
             return
 
@@ -1019,7 +1040,7 @@ class CapturePane(CaptureAccess, LookupPane):
                 await self.push(
                     text_panel(
                         self.palette, "Setting this up",
-                        capture.SETUP_STEPS, style=self.palette.accent,
+                        capture.setup_steps(), style=self.palette.accent,
                     )
                 )
         await self.push_warning(
@@ -1041,7 +1062,8 @@ class CapturePane(CaptureAccess, LookupPane):
             await self.push_error(
                 "netzilla cannot run the fix from here",
                 f"{why}.\n\nRun this once in a terminal instead, then log out "
-                f"and back in:\n\n{capture.SETUP_STEPS}",
+                f"and back in:\n\n{capture.SETUP_STEPS}" if hostos.is_linux()
+                else f"{why}.\n\n{capture.setup_steps()}",
             )
             return
         await self.push(

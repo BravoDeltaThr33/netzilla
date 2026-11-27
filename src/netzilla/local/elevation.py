@@ -19,7 +19,8 @@ from __future__ import annotations
 
 import asyncio
 
-from .runner import CommandResult, have, run
+from .. import hostos
+from .runner import CommandResult, run
 
 REFRESH_SECONDS = 60.0
 
@@ -53,8 +54,9 @@ class SudoSession:
     # ------------------------------------------------------------ unlock
     async def unlock(self, password: str) -> tuple[bool, str]:
         """Validate the password once and start keeping the timestamp alive."""
-        if not have("sudo"):
-            self._reason = "sudo is not installed"
+        if not hostos.has_sudo():
+            self._reason = ("Windows has no sudo session; " + hostos.admin_hint()
+                            if hostos.is_windows() else "sudo is not installed")
             return False, self._reason
         # -S reads the password from stdin, -p '' suppresses sudo's own prompt
         # (netzilla asked for it already), -v validates without running a tool.
@@ -116,7 +118,7 @@ class SudoSession:
         keeper, self._keeper = self._keeper, None
         if keeper is not None:
             keeper.cancel()
-        if have("sudo"):
+        if hostos.has_sudo():
             await run(["sudo", "-k"], timeout=10)
 
 

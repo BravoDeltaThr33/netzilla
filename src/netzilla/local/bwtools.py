@@ -9,13 +9,16 @@ curses mode, because netzilla's own interface owns the terminal:
 
 nload has no such mode at all, so netzilla does not shell out to it; the INT
 tab's LIVE RATES action reads /proc/net/dev directly instead (see netif.py).
+
+None of these exist for Windows; on macOS all four come from Homebrew. LIVE
+RATES reads the system's own counters everywhere.
 """
 
 from __future__ import annotations
 
 import json
-import os
 
+from .. import hostos
 from .runner import CommandResult, have, run, run_for
 
 TOOLS = ("iftop", "vnstat", "bmon", "nload")
@@ -36,15 +39,18 @@ PURPOSE = {
 
 
 def is_root() -> bool:
-    try:
-        return os.geteuid() == 0
-    except AttributeError:      # non-POSIX; netzilla targets Linux/macOS
-        return False
+    """Root — or an elevated Administrator on Windows."""
+    return hostos.is_admin()
+
+
+def install_hint(tool: str) -> str:
+    """How to get one of these tools on this system, or why it can't be had."""
+    return INSTALL_HINTS[tool] if hostos.is_linux() else hostos.install_hint(tool)
 
 
 def tools_status() -> list[tuple[str, bool, str, str]]:
     """[(tool, installed, purpose, install hint)] for the TOOL CHECK action."""
-    return [(t, have(t), PURPOSE[t], INSTALL_HINTS[t]) for t in TOOLS]
+    return [(t, have(t), PURPOSE[t], install_hint(t)) for t in TOOLS]
 
 
 def needs_root_error(result: CommandResult) -> bool:
@@ -74,7 +80,7 @@ async def binary_caps(tool: str) -> str:
 async def sudo_without_password() -> bool:
     """True when sudo will run this without prompting (NOPASSWD or a live
     timestamp). `sudo -n` never prompts, so this cannot hang the interface."""
-    if not have("sudo"):
+    if not hostos.has_sudo():
         return False
     result = await run(["sudo", "-n", "true"], timeout=5)
     return result.ok
@@ -89,6 +95,11 @@ async def elevation(tool: str) -> tuple[list[str] | None, str]:
     """
     if is_root():
         return [], "netzilla is running as root"
+    if hostos.is_macos():
+        from .capture import bpf_readable
+
+        if bpf_readable():
+            return [], "your account may open /dev/bpf* (ChmodBPF)"
     caps = await binary_caps(tool)
     if "cap_net_raw" in caps.lower():
         return [], f"{tool} carries cap_net_raw"
@@ -101,6 +112,9 @@ async def elevation(tool: str) -> tuple[list[str] | None, str]:
             "using the sudo session unlocked on the CAPTURE tab"
             if SESSION.active else "using passwordless sudo"
         )
+    if hostos.is_macos():
+        return None, ("netzilla is not running as root, your account may not open "
+                      "/dev/bpf*, and sudo would ask for a password")
     checked = (
         "netzilla is not running as root, "
         f"{tool} has no cap_net_raw capability, "
@@ -274,6 +288,16 @@ def vnstat_service_hint(output: str) -> str:
     """vnstat says different things when it has no data yet; normalise them."""
     blob = (output or "").lower()
     if "not found" in blob or "unable to" in blob or "no data available" in blob:
+        if hostos.is_macos():
+            return (
+                "vnstat has no database for this interface yet. Its service has to "
+                "run for a while before there is history to show:\n"
+                "    sudo brew services start vnstat\n"
+                "(Homebrew runs vnstat's collector as root.) It watches en0 "
+                "unless told otherwise in "
+                "$(brew --prefix)/etc/vnstat.conf.\n"
+                "Give it five minutes, then try again."
+            )
         return (
             "vnstat has no database for this interface yet. Its service has to "
             "run for a while before there is history to show:\n"

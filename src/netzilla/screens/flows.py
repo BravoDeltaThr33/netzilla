@@ -17,6 +17,7 @@ import time
 
 from textual.widgets import Static
 
+from .. import hostos
 from ..clients import ip_api
 from ..local import devices, flows, netif
 from ..render import kv_panel, table_panel, text_panel, verdict_line
@@ -31,8 +32,9 @@ class FlowPane(LookupPane):
         "every socket; TALKERS ranks remote hosts — external ones get ASN, geo "
         "and reverse DNS, LAN ones get vendor, hostname and device type; "
         "SERVICES groups traffic by application; WATCH refreshes live; "
-        "BLACKLIST flags connections to IPs you list. It reads what ss and "
-        "/proc report — no key needed. For on-the-wire packets, use CAPTURE."
+        "BLACKLIST flags connections to IPs you list. It reads this machine's "
+        "own connection table — no key needed. For on-the-wire packets, use "
+        "CAPTURE."
     )
     FIELDS = (
         Field(
@@ -117,7 +119,7 @@ class FlowPane(LookupPane):
                 self.palette, "Sockets",
                 ["Proto", "Local", "Remote", "Service", "State", "Process"],
                 flows.connection_rows(shown),
-                subtitle="this host's own sockets, via ss",
+                subtitle=f"this host's own sockets, via {flows.source_label()}",
             )
         )
 
@@ -334,7 +336,7 @@ class FlowPane(LookupPane):
         if not rates:
             await self.push_warning(
                 "No throughput to show",
-                f"{netif.PROC_NET_DEV} gave nothing. This is Linux-only.",
+                f"{netif.counter_source()} gave nothing.",
             )
             return
         await self.push(
@@ -342,7 +344,7 @@ class FlowPane(LookupPane):
                 self.palette, "Bandwidth right now",
                 ["Interface", "In Mbit/s", "Out Mbit/s", "Load"],
                 flows.intensity_rows(rates),
-                subtitle="two /proc/net/dev samples, two seconds apart",
+                subtitle=f"two {netif.counter_source()} samples, two seconds apart",
             )
         )
 
@@ -357,7 +359,7 @@ class FlowPane(LookupPane):
         from pathlib import Path
 
         try:
-            text = Path(path).expanduser().read_text()
+            text = Path(path).expanduser().read_text(encoding="utf-8", errors="replace")
         except OSError as exc:
             raise ValidationError(f"Could not read {path}: {exc}")
         blacklist = flows.load_blacklist(text)
@@ -403,28 +405,44 @@ class FlowPane(LookupPane):
         await self.begin("Checking…")
         conns, error = await flows.snapshot()
         await self.finish()
-        rows = [
-            ("ss (iproute2)", have("ss")),
-            ("netstat (fallback)", have("netstat")),
+        if hostos.is_windows():
+            rows = [
+                ("Windows connection table (IP Helper API)", not error),
+                ("netstat (fallback)", have("netstat")),
+            ]
+            names = ("Windows names the process behind every connection, and "
+                     "no Administrator is needed for it.")
+        elif hostos.is_macos():
+            rows = [
+                ("netstat (every socket)", have("netstat")),
+                ("lsof (process names)", have("lsof")),
+            ]
+            names = ("lsof names the process behind a connection only for your "
+                     "own processes. To see every process, run netzilla as root:\n"
+                     "    sudo netzilla")
+        else:
+            rows = [
+                ("ss (iproute2)", have("ss")),
+                ("netstat (fallback)", have("netstat")),
+            ]
+            names = ("ss shows the owning process only for sockets you own. To see "
+                     "every process behind a connection, run netzilla with sudo — "
+                     "or unlock a session on the CAPTURE tab first, which this tab "
+                     "uses too.")
+        rows += [
             ("Readable right now", f"{len(conns)} sockets" if not error else error),
             ("Geo/ASN source", "ip-api (keyless, 45 req/min)"),
             ("PCAP export", "use the CAPTURE tab's SAVE PCAP"),
         ]
         await self.push(
             verdict_line(self.palette, "Flow monitor",
-                         "ready" if not error else "ss/netstat missing",
+                         "ready" if not error else "connection table unreadable",
                          "ok" if not error else "warn")
         )
         await self.push(kv_panel(self.palette, "What netzilla found", rows))
         await self.push(
-            text_panel(
-                self.palette, "Reading process names",
-                "ss shows the owning process only for sockets you own. To see "
-                "every process behind a connection, run netzilla with sudo — "
-                "or unlock a session on the CAPTURE tab first, which this tab "
-                "uses too.",
-                style=self.palette.muted,
-            )
+            text_panel(self.palette, "Reading process names", names,
+                       style=self.palette.muted)
         )
 
     def _seconds(self, default: int, low: int, high: int) -> int:

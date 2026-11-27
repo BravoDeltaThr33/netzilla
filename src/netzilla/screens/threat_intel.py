@@ -3,6 +3,7 @@ file-hash verdicts."""
 
 from __future__ import annotations
 
+from .. import hostos
 from ..clients import abusech, crtsh, epss, kev, nvd, rdap, urlhaus, virustotal
 from ..local import urlhaus_offline
 from ..render import group, kv_panel, table_panel, verdict_line
@@ -265,7 +266,7 @@ class ThreatIntelPane(LookupPane):
         if not virustotal.is_hash(value):
             raise ValidationError(
                 "That is not an MD5 (32 hex), SHA-1 (40 hex) or SHA-256 (64 hex) hash. "
-                "On Linux: sha256sum FILE"
+                + _HASH_HINT.get(hostos.NAME, "On Linux: sha256sum FILE")
             )
         await self.begin(f"Looking up {virustotal.hash_kind(value)} on VirusTotal…")
         result = await virustotal.check_file(self.services, value)
@@ -473,3 +474,10 @@ def _timeline_verdict(registered: str, earliest_cert: str, flagged: bool):
     if young:
         return "warn", f"Freshly registered ({reg_age}d ago) — treat new domains with care"
     return "ok", "No age/reputation red flags in the dated signals"
+
+
+# How to get a file's SHA-256 with what each system ships.
+_HASH_HINT = {
+    "windows": "On Windows: certutil -hashfile FILE SHA256",
+    "macos": "On macOS: shasum -a 256 FILE",
+}

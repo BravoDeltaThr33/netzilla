@@ -1,15 +1,20 @@
 """Local network interfaces: what exists, and how fast each one is moving.
 
-Interfaces are enumerated with iproute2 (`ip -o link show` / `ip -o addr show`)
-because net-tools' ifconfig is no longer installed by default on Ubuntu, Mint
-or Debian. If ifconfig happens to be present and ip is not, its output is
-parsed as a fallback; failing both, /proc/net/dev at least yields the names.
+On Linux, interfaces are enumerated with iproute2 (`ip -o link show` / `ip -o
+addr show`) because net-tools' ifconfig is no longer installed by default on
+Ubuntu, Mint or Debian. If ifconfig happens to be present and ip is not, its
+output is parsed as a fallback; failing both, /proc/net/dev at least yields
+the names. macOS has `ifconfig -a`, `route -n get default` and `networksetup
+-listallhardwareports` (which says which enX is the Wi-Fi); Windows answers
+through its IP Helper API (see winapi.py).
 
 LIVE RATES is netzilla's own stand-in for nload: nload has no batch mode and
-cannot be embedded in a Textual pane, so instead of shelling out to it,
-/proc/net/dev is sampled twice a few seconds apart and the deltas are turned
-into per-interface Mbit/s, packets/s and error counts — the same two-sample
-technique the LAN tab already uses for SNMP interface rates.
+cannot be embedded in a Textual pane, so instead of shelling out to it, the
+interface byte counters are sampled twice a few seconds apart and the deltas
+are turned into per-interface Mbit/s, packets/s and error counts — the same
+two-sample technique the LAN tab already uses for SNMP interface rates. The
+counters come from /proc/net/dev on Linux, `netstat -ibn` on macOS and
+GetIfTable2 on Windows, all in the same shape.
 
 Every parser here is a pure function over command output, so the whole module
 is unit-testable without a network, root, or any of the tools installed.
@@ -18,12 +23,24 @@ is unit-testable without a network, root, or any of the tools installed.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import re
+import subprocess
 import time
 
+from .. import hostos
 from .runner import have, run
 
 PROC_NET_DEV = "/proc/net/dev"
+
+
+def counter_source() -> str:
+    """Where the interface counters come from on this system, for subtitles."""
+    if hostos.is_windows():
+        return "Windows interface counters"
+    if hostos.is_macos():
+        return "netstat -ib"
+    return PROC_NET_DEV
 
 # "2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP ..."
 _LINK_RE = re.compile(
@@ -101,6 +118,11 @@ def parse_default_gateways(text: str) -> list[str]:
 
 
 async def default_gateways() -> list[str]:
+    if hostos.is_windows():
+        return windows_gateways(_windows_adapters())
+    if hostos.is_macos():
+        route = await macos_default_route()
+        return [route["gateway"]] if route.get("gateway") else []
     if not have("ip"):
         return []
     result = await run(["ip", "route", "show", "default"], timeout=10)
@@ -151,7 +173,7 @@ def _after(text: str, key: str) -> str:
 
 def _kind(name: str, flags: list[str]) -> str:
     """A rough human label, so the picker is not just a list of bare names."""
-    if name == "lo" or "LOOPBACK" in flags:
+    if name in ("lo", "lo0") or "LOOPBACK" in flags:
         return "loopback"
     for prefix, label in (
         ("wl", "wireless"), ("wlan", "wireless"), ("wlp", "wireless"),
@@ -167,6 +189,11 @@ def _kind(name: str, flags: list[str]) -> str:
 
 async def interfaces() -> tuple[list[dict], str]:
     """(interfaces, source). Never raises: an empty list means nothing found."""
+    if hostos.is_windows():
+        found = windows_interfaces(_windows_adapters())
+        return (found, "Windows adapters (IP Helper API)") if found else ([], "unavailable")
+    if hostos.is_macos():
+        return await _macos_interfaces()
     if have("ip"):
         link = await run(["ip", "-o", "link", "show"], timeout=10)
         if link.ok and link.output:
@@ -279,6 +306,14 @@ def parse_proc_net_dev(text: str) -> dict[str, dict]:
 
 
 def read_counters() -> dict[str, dict]:
+    """{interface: counters} right now, in /proc/net/dev's terms on every
+    system; {} when they cannot be read."""
+    if hostos.is_windows():
+        from . import winapi
+
+        return winapi.counters() or {}
+    if hostos.is_macos():
+        return _macos_counters()
     try:
         with open(PROC_NET_DEV, "r", encoding="utf-8", errors="replace") as handle:
             return parse_proc_net_dev(handle.read())
@@ -287,7 +322,7 @@ def read_counters() -> dict[str, dict]:
 
 
 def rates_between(first: dict, second: dict, seconds: float) -> list[dict]:
-    """Per-interface throughput from two /proc/net/dev samples."""
+    """Per-interface throughput from two counter samples."""
     if seconds <= 0:
         seconds = 1.0
     rates = []
@@ -322,7 +357,7 @@ def rates_between(first: dict, second: dict, seconds: float) -> list[dict]:
 
 
 async def sample_rates(seconds: float = 5.0, progress=None) -> list[dict]:
-    """Two /proc/net/dev samples `seconds` apart -> live per-interface rates."""
+    """Two counter samples `seconds` apart -> live per-interface rates."""
     first = read_counters()
     if not first:
         return []
@@ -330,7 +365,7 @@ async def sample_rates(seconds: float = 5.0, progress=None) -> list[dict]:
     remaining = seconds
     while remaining > 0:
         if progress:
-            progress(f"Sampling /proc/net/dev — {remaining:.0f}s to go…")
+            progress(f"Sampling {counter_source()} — {remaining:.0f}s to go…")
         await asyncio.sleep(min(1.0, remaining))
         remaining = seconds - (time.monotonic() - started)
     elapsed = time.monotonic() - started
@@ -426,3 +461,256 @@ def counter_labels(counters: dict, name: str) -> dict[int, str]:
         if isinstance(value, int):
             labels.setdefault(value, field)
     return labels
+
+
+# ================================================================= Windows
+def _windows_adapters() -> list[dict] | None:
+    from . import winapi
+
+    return winapi.adapters()
+
+
+def windows_interfaces(adapters: list[dict] | None) -> list[dict]:
+    """Interface records, in the Linux shape, from winapi.adapters()."""
+    from . import winapi
+
+    found = []
+    for adapter in adapters or []:
+        name = adapter.get("name") or adapter.get("description") or ""
+        if not name:
+            continue
+        up = bool(adapter.get("up"))
+        found.append({
+            "name": name,
+            "state": "UP" if up else "DOWN",
+            "mtu": str(adapter["mtu"]) if adapter.get("mtu") else "",
+            "mac": adapter.get("mac") or "",
+            "flags": ["UP"] if up else [],
+            "addresses": list(adapter.get("addresses") or []),
+            "default_route": up and bool(adapter.get("gateways")),
+            "kind": winapi.adapter_kind(adapter.get("if_type", 0),
+                                        adapter.get("description", ""), name),
+            "description": adapter.get("description", ""),
+        })
+    return found
+
+
+def windows_gateways(adapters: list[dict] | None) -> list[str]:
+    """Default gateways of the adapters that are up, IPv4 first."""
+    found: list[str] = []
+    for adapter in adapters or []:
+        if not adapter.get("up"):
+            continue
+        for gateway in adapter.get("gateways") or []:
+            if gateway not in found:
+                found.append(gateway)
+    return sorted(found, key=lambda g: ":" in g)
+
+
+def windows_dns(adapters: list[dict] | None) -> list[str]:
+    """The DNS servers the adapters that are up actually use."""
+    found: list[str] = []
+    for adapter in adapters or []:
+        if not adapter.get("up"):
+            continue
+        for server in adapter.get("dns") or []:
+            if server not in found and not server.lower().startswith("fec0:"):
+                found.append(server)
+    return found
+
+
+# =================================================================== macOS
+_BSD_HEAD_RE = re.compile(r"^(?P<name>[^\s:]+):\s+flags=\w+<(?P<flags>[^>]*)>(?:.*?\bmtu\s+(?P<mtu>\d+))?")
+_BSD_INET_RE = re.compile(r"^\s+inet\s+(?P<ip>[\d.]+)(?:\s+-->\s+\S+)?\s+netmask\s+(?P<mask>\S+)")
+_BSD_INET6_RE = re.compile(r"^\s+inet6\s+(?P<ip>[0-9a-fA-F:.]+)(?:%\S+)?\s+prefixlen\s+(?P<len>\d+)")
+_BSD_ETHER_RE = re.compile(r"^\s+ether\s+(?P<mac>[0-9a-fA-F:]+)")
+_BSD_STATUS_RE = re.compile(r"^\s+status:\s+(?P<status>\w+)")
+
+
+def _mask_bits(mask: str) -> int | None:
+    """0xffffff00 or 255.255.255.0 -> 24."""
+    try:
+        value = int(mask, 16) if mask.lower().startswith("0x") else \
+            int(ipaddress.IPv4Address(mask))
+    except ValueError:
+        return None
+    return bin(value & 0xFFFFFFFF).count("1")
+
+
+def _full_mac(mac: str) -> str:
+    """macOS writes '0:1b:2c:3:4:5'; everything else writes two digits."""
+    parts = mac.split(":")
+    if len(parts) != 6:
+        return mac.lower()
+    return ":".join(part.zfill(2) for part in parts).lower()
+
+
+def _bsd_kind(name: str, flags: list[str]) -> str:
+    if name.startswith("lo") or "LOOPBACK" in flags:
+        return "loopback"
+    for prefix, label in (
+        ("utun", "tunnel/VPN"), ("ipsec", "tunnel/VPN"), ("ppp", "PPP"),
+        ("gif", "tunnel/VPN"), ("stf", "tunnel/VPN"), ("bridge", "bridge"),
+        ("vmenet", "virtual bridge"), ("vnic", "virtual bridge"),
+        ("awdl", "other"), ("llw", "other"), ("anpi", "other"), ("ap", "other"),
+        ("en", "ethernet"),
+    ):
+        if name.startswith(prefix):
+            return label
+    return "other"
+
+
+def parse_ifconfig_bsd(text: str) -> list[dict]:
+    """Interfaces from macOS's `ifconfig -a`, addresses written as CIDR
+    (netmask 0xffffff00 -> /24) the way `ip addr` writes them."""
+    found: list[dict] = []
+    current: dict | None = None
+    for line in (text or "").splitlines():
+        head = _BSD_HEAD_RE.match(line)
+        if head:
+            flags = [f for f in head.group("flags").split(",") if f]
+            name = head.group("name")
+            current = {
+                "name": name,
+                "state": "UP" if "UP" in flags and "RUNNING" in flags else "DOWN",
+                "mtu": head.group("mtu") or "",
+                "mac": "",
+                "flags": flags,
+                "addresses": [],
+                "default_route": False,
+                "kind": _bsd_kind(name, flags),
+            }
+            found.append(current)
+            continue
+        if current is None:
+            continue
+        match = _BSD_ETHER_RE.match(line)
+        if match:
+            current["mac"] = _full_mac(match.group("mac"))
+            continue
+        match = _BSD_INET_RE.match(line)
+        if match:
+            bits = _mask_bits(match.group("mask"))
+            ip = match.group("ip")
+            current["addresses"].append(f"{ip}/{bits}" if bits is not None else ip)
+            continue
+        match = _BSD_INET6_RE.match(line)
+        if match:
+            current["addresses"].append(f"{match.group('ip')}/{match.group('len')}")
+            continue
+        match = _BSD_STATUS_RE.match(line)
+        if match:
+            current["state"] = "UP" if match.group("status").lower() == "active" else "DOWN"
+    return found
+
+
+def parse_hardware_ports(text: str) -> dict[str, str]:
+    """{device: port} from `networksetup -listallhardwareports`:
+    {'en0': 'Wi-Fi', 'en1': 'Thunderbolt Ethernet Slot 1', …}."""
+    ports: dict[str, str] = {}
+    port = ""
+    for line in (text or "").splitlines():
+        key, sep, value = line.partition(":")
+        if not sep:
+            continue
+        key, value = key.strip().lower(), value.strip()
+        if key == "hardware port":
+            port = value
+        elif key == "device" and port and value:
+            ports[value] = port
+            port = ""
+    return ports
+
+
+def port_kind(port: str) -> str:
+    low = (port or "").lower()
+    if "wi-fi" in low or "airport" in low or "wifi" in low:
+        return "wireless"
+    if "bridge" in low:
+        return "bridge"
+    if "ethernet" in low or " lan" in low or low.endswith("lan"):
+        return "ethernet"
+    if "iphone" in low or "ipad" in low:
+        return "phone tether"
+    if "bluetooth" in low:
+        return "Bluetooth PAN"
+    return ""
+
+
+def parse_route_get(text: str) -> dict[str, str]:
+    """{'gateway': …, 'interface': …} from `route -n get default`."""
+    found: dict[str, str] = {}
+    for line in (text or "").splitlines():
+        key, sep, value = line.partition(":")
+        if not sep:
+            continue
+        key = key.strip().lower()
+        if key in ("gateway", "interface") and value.strip():
+            found[key] = value.strip()
+    return found
+
+
+async def macos_default_route() -> dict[str, str]:
+    if not have("route"):
+        return {}
+    result = await run(["route", "-n", "get", "default"], timeout=8, ok_returncodes=(0, 1))
+    return parse_route_get(result.output) if result.ok else {}
+
+
+async def macos_hardware_ports() -> dict[str, str]:
+    if not have("networksetup"):
+        return {}
+    result = await run(["networksetup", "-listallhardwareports"], timeout=8)
+    return parse_hardware_ports(result.output) if result.ok else {}
+
+
+async def _macos_interfaces() -> tuple[list[dict], str]:
+    if not have("ifconfig"):
+        return [], "unavailable"
+    result = await run(["ifconfig", "-a"], timeout=10)
+    found = parse_ifconfig_bsd(result.output) if result.ok else []
+    if not found:
+        return [], "unavailable"
+    ports, route = await asyncio.gather(macos_hardware_ports(), macos_default_route())
+    for iface in found:
+        port = ports.get(iface["name"])
+        if port:
+            iface["kind"] = port_kind(port) or iface["kind"]
+            iface["description"] = port
+        iface["default_route"] = iface["name"] == route.get("interface")
+    return found, "ifconfig"
+
+
+def parse_netstat_ib(text: str) -> dict[str, dict]:
+    """{interface: counters} from macOS's `netstat -ibn`, in /proc/net/dev's
+    terms. Only each interface's <Link#n> row carries its totals."""
+    counters: dict[str, dict] = {}
+    for line in (text or "").splitlines():
+        parts = line.split()
+        if len(parts) < 9 or not parts[2].startswith("<Link#"):
+            continue
+        name = parts[0].rstrip("*")         # a trailing * marks a down interface
+        values = parts[3:]
+        if values and ":" in values[0]:     # the link-layer address, when it has one
+            values = values[1:]
+        try:
+            numbers = [int(v) for v in values[:7]]
+        except ValueError:
+            continue
+        if len(numbers) < 6 or name in counters:
+            continue
+        ipkts, ierrs, ibytes, opkts, oerrs, obytes = numbers[:6]
+        entry = dict.fromkeys(COUNTER_FIELDS, 0)
+        entry.update(rx_packets=ipkts, rx_errs=ierrs, rx_bytes=ibytes,
+                     tx_packets=opkts, tx_errs=oerrs, tx_bytes=obytes,
+                     tx_colls=numbers[6] if len(numbers) > 6 else 0)
+        counters[name] = entry
+    return counters
+
+
+def _macos_counters() -> dict[str, dict]:
+    try:
+        done = subprocess.run(["netstat", "-ibn"], capture_output=True, timeout=4)
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    return parse_netstat_ib(hostos.decode(done.stdout))

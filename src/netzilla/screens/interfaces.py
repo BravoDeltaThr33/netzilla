@@ -20,6 +20,7 @@ import time
 
 from textual.widgets import Static
 
+from .. import hostos
 from ..graphics.charts import LineGraph
 from ..local import bwtools, netif
 from ..local.wifitools import nice_ceiling
@@ -120,7 +121,10 @@ class InterfacesPane(LookupPane):
                 "No interfaces found",
                 "Neither 'ip' nor 'ifconfig' could list interfaces, and "
                 f"{netif.PROC_NET_DEV} was unreadable. On a normal Linux system "
-                "iproute2 is always present:\n    sudo apt install iproute2",
+                "iproute2 is always present:\n    sudo apt install iproute2"
+                if hostos.is_linux() else
+                f"{hostos.label()} did not hand over its interface list ("
+                + ("IP Helper API" if hostos.is_windows() else "ifconfig -a") + ").",
             )
             return
         await self.push(
@@ -151,10 +155,9 @@ class InterfacesPane(LookupPane):
             await self.finish()
             await self.push_error(
                 "No counters",
-                f"{netif.PROC_NET_DEV} could not be read.\n\n"
-                "On Linux this should always work. macOS has no /proc/net/dev, "
-                "so LIVE RATES is Linux-only — the rest of this tab still works "
-                "there.",
+                f"{netif.counter_source()} could not be read.\n\n"
+                f"On {hostos.label()} this should always work — check that the "
+                "interface still exists (REFRESH).",
             )
             return
 
@@ -204,7 +207,7 @@ class InterfacesPane(LookupPane):
                     kv_panel(
                         self.palette, f"Live throughput — {iface}",
                         netif.rate_summary(mine),
-                        subtitle=f"updating every {every:g}s · /proc/net/dev",
+                        subtitle=f"updating every {every:g}s · {netif.counter_source()}",
                     )
                 )
             table.update(
@@ -265,7 +268,7 @@ class InterfacesPane(LookupPane):
     async def _iftop(self) -> None:
         iface = self._iface()
         seconds = self._seconds(10, 2, 120)
-        await self.begin(f"Checking how iftop can be run…")
+        await self.begin("Checking how iftop can be run…")
         prefix, why = await bwtools.elevation("iftop")
         if prefix is None:
             await self.finish()
@@ -305,9 +308,11 @@ class InterfacesPane(LookupPane):
             f"{tool} cannot open the interface",
             f"{tool} puts the interface in promiscuous mode, which an ordinary "
             f"user may not do.\n\nChecked: {why}.\n\n"
-            "The one-time fix — after this, netzilla runs it with no sudo at all:\n"
-            f"    sudo setcap cap_net_raw+ep $(which {tool})\n\n"
-            "Or start the whole app with root:\n"
+            + ("The one-time fix — after this, netzilla runs it with no sudo at all:\n"
+               f"    sudo setcap cap_net_raw+ep $(which {tool})\n\n" if hostos.is_linux() else
+               "The one-time fix: Wireshark's ChmodBPF, which lets you capture without "
+               "sudo (CAPTURE → TOOL CHECK shows how).\n\n")
+            + "Or start the whole app with root:\n"
             "    sudo netzilla\n\n"
             "Or run it yourself in another terminal:\n"
             f"    sudo {tool} -t -s {seconds} -i {iface}\n\n"
@@ -422,7 +427,7 @@ class InterfacesPane(LookupPane):
         tail = "\n".join(result.output.splitlines()[-8:])
         await self.push(
             text_panel(
-                self.palette, f"bmon raw output — last lines", tail,
+                self.palette, "bmon raw output — last lines", tail,
                 subtitle="cumulative counters, one line per sample",
             )
         )
@@ -451,8 +456,12 @@ class InterfacesPane(LookupPane):
             kv_panel(
                 self.palette, "This session",
                 [
-                    ("Running as root", bwtools.is_root()),
-                    ("iftop usable", bwtools.is_root() or "only with setcap/sudo"),
+                    ("Running as Administrator" if hostos.is_windows()
+                     else "Running as root", bwtools.is_root()),
+                    ("iftop usable", "not available on Windows" if hostos.is_windows()
+                     else bwtools.is_root() or _bpf_open() or "only with ChmodBPF or sudo"
+                     if hostos.is_macos()
+                     else bwtools.is_root() or "only with setcap/sudo"),
                     ("Interfaces found", len(self._interfaces) or "press REFRESH"),
                 ],
                 subtitle="iftop is the only action here that needs root",
@@ -461,7 +470,8 @@ class InterfacesPane(LookupPane):
         if missing:
             await self.push(
                 text_panel(
-                    self.palette, "Install the missing ones",
+                    self.palette, "Not available on Windows" if hostos.is_windows()
+                    else "Install the missing ones",
                     "\n".join(dict.fromkeys(missing)),
                     style=self.palette.accent,
                 )
@@ -470,6 +480,14 @@ class InterfacesPane(LookupPane):
     async def _missing(self, tool: str) -> None:
         await self.push_error(
             f"{tool} is not installed",
-            f"Install it with:\n    {bwtools.INSTALL_HINTS[tool]}\n\n"
-            "LIVE RATES works without any of these tools.",
+            (f"Install it with:\n    {bwtools.install_hint(tool)}\n\n"
+             if hostos.available_here(tool) else bwtools.install_hint(tool) + "\n\n")
+            + "LIVE RATES works without any of these tools.",
         )
+
+
+def _bpf_open() -> bool:
+    """macOS: may this account open /dev/bpf* (Wireshark's ChmodBPF)?"""
+    from ..local.capture import bpf_readable
+
+    return bpf_readable()

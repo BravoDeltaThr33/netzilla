@@ -4,13 +4,23 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "netzilla"
-version = "4.5.0"
+version = "4.6.0"
 description = "Retro terminal TUI for network engineers: Wi-Fi/RF analysis, LAN diagnostics (ARP/DHCP/SNMP/syslog), DNS/RDAP/DoH, BGP, TLS/CT, threat intel and config review — free and open data sources only, with pixel graphs in kitty and Ghostty."
 readme = "README.txt"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "netzilla" }]
 keywords = ["network", "tui", "netops", "noc", "dns", "bgp", "security", "wifi", "kitty", "ghostty"]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: System Administrators",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows :: Windows 10",
+    "Operating System :: Microsoft :: Windows :: Windows 11",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Networking :: Monitoring",
+]
 
 dependencies = [
     # Tested with Textual 8.0 and 8.2; a future major release may change APIs.
@@ -18,7 +28,8 @@ dependencies = [
     "httpx>=0.27,<1",
     # Pixel graphs (kitty, Ghostty). If it is missing, graphs are drawn as text.
     "pillow>=10.1",
-    # WIFI -> BLUETOOTH and BT TRACKERS (BlueZ on Linux, CoreBluetooth on macOS).
+    # WIFI -> BLUETOOTH and BT TRACKERS (BlueZ on Linux, CoreBluetooth on macOS,
+    # WinRT on Windows).
     "bleak>=1.0",
     "tomli>=2.0; python_version < '3.11'",
 ]

@@ -7,8 +7,9 @@ the interface, and every call has a hard timeout.
 from __future__ import annotations
 
 import asyncio
-import shutil
 from dataclasses import dataclass
+
+from .. import hostos
 
 
 @dataclass
@@ -21,7 +22,14 @@ class CommandResult:
 
 
 def have(tool: str) -> bool:
-    return shutil.which(tool) is not None
+    return hostos.locate(tool) is not None
+
+
+def _resolved(argv: list[str]) -> list[str]:
+    """argv with the tool's full path when it is installed off PATH (Wireshark
+    on Windows, Homebrew on macOS); otherwise unchanged."""
+    path = hostos.locate(argv[0])
+    return [path, *argv[1:]] if path else list(argv)
 
 
 async def _reap(process) -> None:
@@ -61,7 +69,7 @@ async def run(
         )
     try:
         process = await asyncio.create_subprocess_exec(
-            *argv,
+            *_resolved(argv),
             stdin=asyncio.subprocess.PIPE if stdin_text is not None else None,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -85,8 +93,8 @@ async def run(
         await _reap(process)
         raise
 
-    out = (stdout or b"").decode("utf-8", "replace").strip()
-    err = (stderr or b"").decode("utf-8", "replace").strip()
+    out = hostos.decode(stdout).strip()
+    err = hostos.decode(stderr).strip()
     ok = process.returncode in ok_returncodes
     # Some tools (ping on an unreachable host) return useful output on failure.
     if not ok and out:
@@ -112,7 +120,7 @@ async def run_for(
         )
     try:
         process = await asyncio.create_subprocess_exec(
-            *argv,
+            *_resolved(argv),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -147,12 +155,12 @@ async def run_for(
     except (asyncio.TimeoutError, asyncio.CancelledError):
         reader.cancel()
 
-    out = b"".join(chunks).decode("utf-8", "replace").strip()
+    out = hostos.decode(b"".join(chunks)).strip()
     err = ""
     if process.stderr is not None:
         try:
-            err = (await asyncio.wait_for(process.stderr.read(), timeout=1.0)).decode(
-                "utf-8", "replace"
+            err = hostos.decode(
+                await asyncio.wait_for(process.stderr.read(), timeout=1.0)
             ).strip()
         except (asyncio.TimeoutError, Exception):
             err = ""
@@ -180,7 +188,7 @@ class LiveProcess:
             return f"'{self.argv[0]}' is not installed on this system."
         try:
             self._process = await asyncio.create_subprocess_exec(
-                *self.argv,
+                *_resolved(self.argv),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -220,9 +228,9 @@ class LiveProcess:
             parts = (partial + chunk).split(b"\n")
             partial = parts.pop()          # whatever came after the last newline
             for part in parts:
-                yield part.decode("utf-8", "replace").rstrip("\r")
+                yield hostos.decode(part).rstrip("\r")
         if partial:                         # a final line with no newline
-            yield partial.decode("utf-8", "replace").rstrip("\r")
+            yield hostos.decode(partial).rstrip("\r")
 
     async def stop(self) -> str:
         """Kill the process and return whatever it wrote to stderr."""
@@ -241,7 +249,7 @@ class LiveProcess:
             try:
                 blob = await asyncio.wait_for(process.stderr.read(), timeout=1.0)
                 if blob:
-                    self._stderr.append(blob.decode("utf-8", "replace").strip())
+                    self._stderr.append(hostos.decode(blob).strip())
             except Exception:
                 pass
         return "\n".join(part for part in self._stderr if part)

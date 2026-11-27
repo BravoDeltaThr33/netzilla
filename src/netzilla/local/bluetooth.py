@@ -17,9 +17,9 @@ and Google Find Hub tags): one that stays near you for a long time, or that
 turns up on more than one network you have been on, is flagged.
 
 Scanning goes through bleak (BlueZ over D-Bus on Linux, CoreBluetooth on
-macOS) and never pairs or connects. On Linux it is an *active* scan: the
-radio may send a short "scan request" so that a device answers with its name
-— nothing more.
+macOS, WinRT on Windows) and never pairs or connects. It is an *active*
+scan: the radio may send a short "scan request" so that a device answers
+with its name — nothing more.
 
 Everything in this module except Scanner is plain Python and is tested with
 recorded advertisements; Scanner is the thin layer over bleak.
@@ -31,7 +31,6 @@ import csv
 import gzip
 import hashlib
 import io
-import math
 import re
 import statistics
 import time
@@ -39,6 +38,8 @@ from collections import deque
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
+
+from .. import hostos
 
 DATA = Path(__file__).resolve().parent.parent / "data" / "bt_numbers.csv.gz"
 
@@ -127,6 +128,14 @@ def from_bleak(device, adv) -> Advert:
     platform = getattr(adv, "platform_data", None)
     if isinstance(platform, tuple) and len(platform) >= 2 and isinstance(platform[1], dict):
         props = platform[1]              # BlueZ: (object path, Device1 properties)
+    elif isinstance(platform, tuple) and len(platform) >= 2:
+        # WinRT: (watcher, received-event args), which say public or random.
+        try:
+            kind = int(getattr(platform[1], "bluetooth_address_type", None))
+        except (TypeError, ValueError):
+            kind = -1
+        if kind in (0, 1):
+            props = {"AddressType": "public" if kind == 0 else "random"}
     name = (getattr(adv, "local_name", None) or getattr(device, "name", None) or "")
     address = str(getattr(device, "address", "") or props.get("Address", ""))
     if name.replace("-", ":").upper() == address.upper():
@@ -1117,6 +1126,44 @@ INSTALL_HINTS = (
     "host's Bluetooth radio."
 )
 
+MACOS_HINTS = (
+    "Bluetooth scanning uses macOS's own CoreBluetooth: nothing to install, "
+    "and no sudo needed.\n\n"
+    "The first scan asks for permission. If it was refused, allow your "
+    "terminal app (Terminal, iTerm2, Ghostty…) under System Settings → "
+    "Privacy & Security → Bluetooth, then quit and reopen the terminal.\n\n"
+    "macOS keeps Bluetooth addresses from apps: each device shows an "
+    "identifier this Mac made up for it, and its maker comes only from what "
+    "it broadcasts."
+)
+
+WINDOWS_HINTS = (
+    "Bluetooth scanning uses Windows' own Bluetooth stack: nothing to "
+    "install, and no Administrator needed.\n\n"
+    "Bluetooth must be on: quick settings, or Settings → Bluetooth & "
+    "devices. If that switch is missing, Windows sees no Bluetooth radio — "
+    "check Device Manager. A virtual machine normally cannot see the host's."
+)
+
+
+def install_hints() -> str:
+    """How to get Bluetooth scanning going on this system."""
+    if hostos.is_macos():
+        return MACOS_HINTS
+    if hostos.is_windows():
+        return WINDOWS_HINTS
+    return INSTALL_HINTS
+
+
+def _turn_on_text() -> str:
+    if hostos.is_macos():
+        return "Turn it on in Control Center or System Settings → Bluetooth."
+    if hostos.is_windows():
+        return "Turn it on in quick settings or Settings → Bluetooth & devices."
+    return ("Turn it on in the system settings or tray, or:\n\n"
+            "    rfkill unblock bluetooth\n"
+            "    bluetoothctl power on")
+
 
 def explain(exc: BaseException) -> BluetoothUnavailable:
     """Turn whatever bleak or D-Bus raised into a title and what to do."""
@@ -1135,25 +1182,28 @@ def explain(exc: BaseException) -> BluetoothUnavailable:
             and "not found" in low:
         return BluetoothUnavailable(
             "No Bluetooth adapter",
-            "This machine has no Bluetooth radio that Linux can see. A laptop's "
-            "built-in Bluetooth or a USB dongle works; a virtual machine (Hyper-V, "
-            "VirtualBox, WSL…) normally cannot see the host's.")
+            f"This machine has no Bluetooth radio that {hostos.label()} can see. A "
+            "laptop's built-in Bluetooth or a USB dongle works; a virtual machine "
+            "(Hyper-V, VirtualBox, WSL…) normally cannot see the host's.")
     if reason == "POWERED_OFF" or "notready" in low or "not ready" in low \
             or "no powered" in low:
         return BluetoothUnavailable(
             "Bluetooth is off",
-            "The Bluetooth radio is switched off. Turn it on in the system "
-            "settings or tray, or:\n\n"
-            "    rfkill unblock bluetooth\n"
-            "    bluetoothctl power on")
+            "The Bluetooth radio is switched off. " + _turn_on_text())
     if reason.startswith("DENIED") or "permission" in low or "not authorized" in low \
             or "accessdenied" in low or "access denied" in low:
+        if hostos.is_macos():
+            advice = ("Allow this terminal app under System Settings → Privacy & "
+                      "Security → Bluetooth, then quit and reopen it.")
+        elif hostos.is_windows():
+            advice = ("Check Settings → Privacy & security → Radios, and that "
+                      "Bluetooth is on.")
+        else:
+            advice = ("Check that bluetoothd is running and your account is "
+                      "allowed to use it.")
         return BluetoothUnavailable(
             "Bluetooth permission denied",
-            "The system refused access to Bluetooth. On Linux, check that "
-            "bluetoothd is running and your account is allowed to use it; on "
-            "macOS, allow this terminal under System Settings → Privacy & "
-            "Security → Bluetooth.")
+            "The system refused access to Bluetooth. " + advice)
     if "serviceunknown" in low or "org.bluez was not provided" in low \
             or "name has no owner" in low:
         return BluetoothUnavailable(
@@ -1264,6 +1314,25 @@ def parse_rfkill(text: str) -> list[dict]:
     return [r for r in radios if "bluetooth" in r["type"].lower() or r["name"].startswith("hci")]
 
 
+def parse_sp_bluetooth(text: str) -> dict:
+    """{on, address, chipset} for the controller in `system_profiler
+    SPBluetoothDataType -json`; {} when there is none."""
+    import json
+
+    try:
+        data = json.loads(text or "{}")
+    except ValueError:
+        return {}
+    for block in data.get("SPBluetoothDataType") or []:
+        props = block.get("controller_properties") if isinstance(block, dict) else None
+        if isinstance(props, dict):
+            state = str(props.get("controller_state", "")).lower()
+            return {"on": state.endswith("_on") or state == "on",
+                    "address": str(props.get("controller_address", "")),
+                    "chipset": str(props.get("controller_chipset", ""))}
+    return {}
+
+
 async def tool_report() -> tuple[list[tuple[str, object]], str]:
     """TOOL CHECK's Bluetooth rows, and what (if anything) stops BLUETOOTH
     from working — "" when it should."""
@@ -1279,6 +1348,27 @@ async def tool_report() -> tuple[list[tuple[str, object]], str]:
         rows.append(("bleak (Bluetooth scanning library)",
                      "MISSING — reinstall: pipx install --force ."))
         problem = "the bleak library is missing"
+    if hostos.is_macos():
+        rows.append(("Bluetooth backend", "CoreBluetooth (macOS's own)"))
+        if have("system_profiler"):
+            result = await run(["system_profiler", "SPBluetoothDataType", "-json"],
+                               timeout=20, ok_returncodes=(0,))
+            info = parse_sp_bluetooth(result.output or "")
+            if info:
+                rows.append(("Bluetooth controller",
+                             " · ".join(v for v in (info.get("chipset", ""),
+                                                    "on" if info.get("on") else
+                                                    "OFF — turn it on in Control Center")
+                                        if v)))
+                if not info.get("on") and not problem:
+                    problem = "Bluetooth is switched off"
+        rows.append(("Permission", "System Settings → Privacy & Security → Bluetooth "
+                                   "must allow this terminal"))
+        return rows, problem
+    if hostos.is_windows():
+        rows.append(("Bluetooth backend", "WinRT (Windows' own Bluetooth stack)"))
+        rows.append(("Radio", "Settings → Bluetooth & devices must show Bluetooth on"))
+        return rows, problem
     if have("systemctl"):
         result = await run(["systemctl", "is-active", "bluetooth"], timeout=4,
                            ok_returncodes=(0, 3, 4))
@@ -1326,6 +1416,7 @@ __all__ = [
     "Advert", "Guess", "Device", "Flag", "Watch", "Place", "Scanner",
     "BluetoothUnavailable", "classify", "maker_of", "company_name", "uuid_name",
     "distance_m", "distance_text", "explain", "from_bleak", "merge", "place_from",
-    "current_place", "parse_bluetoothctl_show", "parse_rfkill", "tool_report",
-    "sparkline_cells", "clock", "ago", "INSTALL_HINTS", "KIND_TITLES",
+    "current_place", "parse_bluetoothctl_show", "parse_rfkill", "parse_sp_bluetooth",
+    "tool_report", "sparkline_cells", "clock", "ago", "INSTALL_HINTS", "install_hints",
+    "KIND_TITLES",
 ]

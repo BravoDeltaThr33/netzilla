@@ -13,7 +13,8 @@ Everything here is local L2/L3 protocol work with no third-party API:
 
 DHCP detection needs root (raw sockets). The syslog listener needs root only
 for ports below 1024: without it, the default 514 falls back to 1514 on its
-own instead of stopping with an error.
+own instead of stopping with an error. Windows and macOS let any user listen
+on 514; on Windows the DHCP Client service keeps UDP/68 for itself.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ import asyncio
 
 from textual.widgets import Static
 
+from .. import hostos
 from ..local import arpwatch, devices, dhcp, lan, snmp, syslog
 from ..render import kv_panel, table_panel, text_panel, verdict_line
 from ..validators import ValidationError, valid_host, valid_ip, valid_network
@@ -35,8 +37,12 @@ class LANPane(LookupPane):
         "finds every device and names it: vendor, hostname and what it looks "
         "like (leave the box blank to sweep this machine's own subnet). "
         "IDENTIFY profiles one device. Also: rogue DHCP, duplicate IPs, SNMP, "
-        "syslog. ROGUE DHCP needs root ('sudo netzilla'); SYSLOG uses udp/514 "
-        "as root and udp/1514 otherwise."
+        + ("syslog. SYSLOG listens on udp/514 (no administrator rights needed)."
+           if hostos.is_windows() else
+           "syslog. ROGUE DHCP needs root ('sudo netzilla'); SYSLOG listens on "
+           "udp/514 with no root needed." if hostos.is_macos() else
+           "syslog. ROGUE DHCP needs root ('sudo netzilla'); SYSLOG uses udp/514 "
+           "as root and udp/1514 otherwise.")
     )
     FIELDS = (
         Field(
@@ -110,7 +116,9 @@ class LANPane(LookupPane):
         except FileNotFoundError:
             await self.finish()
             await self.push_error(
-                "ping not installed", "Install it with:\n    sudo apt install iputils-ping"
+                "ping not installed",
+                "Install it with:\n    sudo apt install iputils-ping" if hostos.is_linux()
+                else hostos.missing_tool_text("ping"),
             )
             return
         live = result["live"]
@@ -248,7 +256,8 @@ class LANPane(LookupPane):
             offers = await dhcp.detect(listen_seconds=listen)
         except PermissionError as exc:
             await self.finish()
-            await self.push_error("Needs root", str(exc))
+            await self.push_error("UDP/68 is taken" if hostos.is_windows() else "Needs root",
+                                  str(exc))
             return
         except OSError as exc:
             await self.finish()
@@ -356,7 +365,8 @@ class LANPane(LookupPane):
             await self.push_error(
                 "net-snmp not installed",
                 "netzilla uses the system SNMP tools for this.\n\n"
-                "Install them with:\n    sudo apt install snmp",
+                + ("Install them with:\n    sudo apt install snmp" if hostos.is_linux()
+                   else hostos.missing_tool_text("snmpget")),
             )
             return
         await self.begin(f"Polling {host} over SNMP…")
@@ -459,9 +469,11 @@ class LANPane(LookupPane):
         try:
             await collector.start()
         except PermissionError as exc:
-            if explicit or port >= 1024:
+            if explicit or port >= 1024 or hostos.is_windows():
                 await self.finish()
-                await self.push_error("Needs root", str(exc))
+                await self.push_error(
+                    f"udp/{port} unavailable" if hostos.is_windows() else "Needs root",
+                    str(exc))
                 return
             # Not root and the user never asked for 514 specifically: use the
             # unprivileged alternative instead of stopping.

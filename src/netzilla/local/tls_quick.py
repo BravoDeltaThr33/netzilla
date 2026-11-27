@@ -2,16 +2,30 @@
 SSL/TLS tab. SSL Labs supplies the deep graded assessment; this supplies the
 answer in under a second, works against internal hosts, and never leaves the
 network.
+
+macOS ships LibreSSL's openssl, which has no -brief; the full report is
+shown instead, with the certificate's PEM block left out. Windows has no
+openssl at all unless one is installed, and python_probe() gives the same
+summary from Python's own TLS stack.
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import re
 import socket
 import ssl
 from datetime import datetime, timezone
 
 from .runner import CommandResult, run
+
+_PEM_RE = re.compile(r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----", re.S)
+
+
+def without_pem(text: str) -> str:
+    """s_client's full report with the base64 certificate blocks left out."""
+    return _PEM_RE.sub("(certificate PEM left out)", text or "")
 
 
 async def openssl_probe(host: str, port: int = 443, timeout: float = 15.0) -> CommandResult:
@@ -21,12 +35,54 @@ async def openssl_probe(host: str, port: int = 443, timeout: float = 15.0) -> Co
         "-servername", host,
         "-brief",
     ]
-    result = await run(argv, timeout=timeout, ok_returncodes=(0, 1))
+    # An empty stdin, closed at once: s_client finishes the handshake, prints
+    # it, sees end-of-input and hangs up — instead of waiting on the terminal.
+    result = await run(argv, timeout=timeout, ok_returncodes=(0, 1), stdin_text="")
+    if "unknown option" in f"{result.error}\n{result.output}".lower():
+        # LibreSSL (macOS): no -brief. Ask for the full report.
+        result = await run(argv[:-1], timeout=timeout, ok_returncodes=(0, 1), stdin_text="")
+        if result.output or result.error:
+            combined = "\n".join(p for p in (result.output, result.error) if p)
+            return CommandResult(True, without_pem(combined), "", result.command)
     if result.output or result.error:
         # openssl writes its handshake summary to stderr with -brief.
         combined = "\n".join(p for p in (result.output, result.error) if p)
         return CommandResult(True, combined, "", result.command)
     return result
+
+
+def handshake_text(info: dict) -> str:
+    """inspect_certificate()'s answer laid out like `openssl s_client -brief`."""
+    if info.get("error") and not info.get("protocol"):
+        return info["error"]
+    lines = [
+        f"Protocol version: {info.get('protocol') or '?'}",
+        f"Ciphersuite: {info.get('cipher') or '?'}"
+        + (f" ({info['cipher_bits']} bits)" if info.get("cipher_bits") else ""),
+    ]
+    if info.get("subject_cn") or info.get("subject_o"):
+        lines.append("Peer certificate: " + ", ".join(
+            f"{k}={v}" for k, v in (("CN", info.get("subject_cn")), ("O", info.get("subject_o")))
+            if v))
+    if info.get("issuer_cn") or info.get("issuer_o"):
+        lines.append("Issuer: " + ", ".join(
+            f"{k}={v}" for k, v in (("CN", info.get("issuer_cn")), ("O", info.get("issuer_o")))
+            if v))
+    if info.get("not_after"):
+        lines.append(f"Valid until: {info['not_after']}")
+    if info.get("sha256_fingerprint"):
+        lines.append(f"SHA-256 fingerprint: {info['sha256_fingerprint']}")
+    lines.append("Verification: " + ("OK" if info.get("verified") else
+                                      info.get("error") or "not verified"))
+    return "\n".join(lines)
+
+
+async def python_probe(host: str, port: int = 443, timeout: float = 10.0) -> CommandResult:
+    """OPENSSL HANDSHAKE without openssl: Python's TLS stack's view of it."""
+    info = await asyncio.to_thread(inspect_certificate, host, port, timeout)
+    return CommandResult(bool(info.get("protocol")), handshake_text(info),
+                         "" if info.get("protocol") else info.get("error", ""),
+                         f"python ssl {host}:{port}")
 
 
 def inspect_certificate(host: str, port: int = 443, timeout: float = 10.0) -> dict:
