@@ -326,6 +326,35 @@ def decode(data: bytes | None) -> str:
     return data.decode("utf-8", "replace")
 
 
+# ------------------------------------------------------------ the window
+_NO_WINDOW = 0x08000000           # CREATE_NO_WINDOW
+_OWN_CONSOLE = 0x00000010 | 0x00000008    # CREATE_NEW_CONSOLE, DETACHED_PROCESS
+
+
+def hide_console_windows() -> bool:
+    """netzilla's own window on Windows has no console, so every tool it
+    starts (ping, tracert, netsh…) would otherwise flash up a black console
+    window of its own. From now on they start with CREATE_NO_WINDOW, their
+    output still read through pipes. Returns whether it was switched on."""
+    if NAME != WINDOWS:
+        return False
+    import subprocess
+
+    original = subprocess.Popen.__init__
+    if getattr(original, "_netzilla_no_window", False):
+        return True
+
+    def __init__(self, *args, **kwargs):
+        flags = int(kwargs.get("creationflags") or 0)
+        if not flags & _OWN_CONSOLE:
+            kwargs["creationflags"] = flags | _NO_WINDOW
+        original(self, *args, **kwargs)
+
+    __init__._netzilla_no_window = True
+    subprocess.Popen.__init__ = __init__
+    return True
+
+
 def safe_filename(text: str, fallback: str = "capture") -> str:
     """A piece of a file name that every system accepts (Windows refuses
     \\ / : * ? " < > | and names ending in a dot or a space)."""
@@ -339,4 +368,5 @@ __all__ = [
     "is_windows", "label", "config_dir", "extra_tool_dirs", "locate",
     "install_hint", "install_commands", "missing_tool_text", "available_here",
     "is_admin", "admin_hint", "has_sudo", "decode", "safe_filename",
+    "hide_console_windows",
 ]

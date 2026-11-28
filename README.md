@@ -7,18 +7,38 @@ network admin actually reaches for — plus the local tools (`dig`, `whois`,
 
 Twenty-one tabs, seventeen dark colour themes, **free and open data sources
 only**, and zero setup to start using most of it. Runs on **Linux, macOS and
-Windows**. **Version 4.7.0.**
+Windows**, in a terminal or in a window of its own — `netzilla.exe` on
+Windows. **Version 4.8.0.**
 
 - **Pixel graphs in kitty, Ghostty, Windows Terminal and WezTerm.** Live
   Wi-Fi signal, a channel spectrum, interface rates and the speed test are
   drawn as real anti-aliased images in terminals that can show them, and as
   text everywhere else — netzilla asks the terminal what it is and decides
   for itself.
+- **Its own window, too.** `netzilla.exe` (or `netzilla --window`) opens
+  netzilla in a window drawn the way Ghostty draws it, pixel graphs and
+  all, with a CRT glow — no terminal and nothing else to install.
 - **Nothing paid.** Every source is free; most need no key at all.
 - **Every control checked.** Every button on every tab and every documented
   key, in both cases, is exercised by the test suite.
 
 ![LIVE AIR in kitty — every Wi-Fi network graphed live](docs/showcase/live-air.gif)
+
+## What's new in 4.8
+
+netzilla in a window of its own, and **netzilla.exe** for Windows: double-click
+it and netzilla opens in its own window, drawn the way Ghostty draws it on
+Linux. No terminal, no Python, nothing to install.
+
+![netzilla.exe's window: DASH at 160 × 50, with the CRT glow and scanlines](docs/showcase/23-window-dash.png)
+
+| | |
+|---|---|
+| **The window** | netzilla writes to a terminal kept inside the window, and every cell is painted from it with Pillow: JetBrains Mono (Ghostty's own font, now part of netzilla) at Ghostty's cell size, the theme's 24-bit colours, box drawing, blocks, sextants and braille drawn to the pixel as Ghostty draws them, and the graphs, the DASH banner and the beast's breath as pictures through the same kitty graphics protocol. A CRT glow and scanlines lie over the whole window; *Ctrl+P → Window: CRT glow and scanlines* turns them off for the plain Ghostty look. |
+| **Keys and the mouse** | Every key reaches netzilla with the name it has on Linux (Ctrl+T, Shift+Tab, F1–F12…); clicks, drags and the wheel work as in a terminal. The window's own: **Ctrl +/−** text size (remembered), **Ctrl 0** the size that fits DASH, **F11** or **Alt+Enter** full screen, **Ctrl+V** paste, **Ctrl+click** a link. F4 copies straight to the clipboard; a long run that ends while the window is behind others says so in the title bar and flashes the taskbar button. |
+| **Size** | Opens at DASH's 160 × 50 with the text as large as fits the screen (up to 13 pt); resizing gives netzilla more or fewer cells, as a terminal would. |
+| **Linux and macOS** | `netzilla --window` (or `netzilla-window`) opens the same window wherever Python has tkinter (`sudo apt install python3-tk`). |
+| **Getting netzilla.exe** | GitHub builds it on Windows from every change, starts it once to check that it draws DASH and answers keys, and keeps it with the run: **Actions → netzilla.exe → the newest run → Artifacts**. A tag such as `v4.8.0` attaches it to that release for anyone to download. To build it yourself on Windows: `py -m pip install . pyinstaller`, then `py packaging\build_exe.py`. The first start may meet SmartScreen: *More info → Run anyway*. |
 
 ## What's new in 4.7
 
@@ -368,7 +388,7 @@ Then, on any of them:
 
 ```bash
 cd ~/Downloads
-tar -xzf netzilla-4.7.0.tar.gz
+tar -xzf netzilla-4.8.0.tar.gz
 cd netzilla
 pipx install .
 netzilla --terminal    # optional: what netzilla sees in this terminal
@@ -377,6 +397,12 @@ netzilla
 
 Pillow (for the pixel graphs) is installed with it. The speed test is built
 in; `pipx inject netzilla speedtest-cli` adds the optional OOKLA TEST.
+`netzilla --window` opens netzilla in its own window instead (needs tkinter:
+`sudo apt install python3-tk` on Ubuntu and Mint).
+
+On Windows there is also **netzilla.exe**, which needs none of the above:
+download it from GitHub (Actions → netzilla.exe → Artifacts, or a release)
+and double-click it.
 
 Upgrading from an older version: same steps, but `pipx install --force .`.
 Your theme and settings are kept.
@@ -451,11 +477,13 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-982 tests. Everything is exercised with recorded or mocked responses and a
+1034 tests. Everything is exercised with recorded or mocked responses and a
 fake terminal; macOS and Windows are faked with their tools' recorded output
 and the Windows API structures built byte by byte, and DNS servers, sockets and
-the Windows console are fakes. No network calls, no root, no packets sent to
-the devices on your LAN, and no real key is ever used or printed.
+the Windows console are fakes. One test opens netzilla's real window and is
+skipped where there is no display; GitHub runs it on Windows with every build
+of netzilla.exe. No network calls, no root, no packets sent to the devices on
+your LAN, and no real key is ever used or printed.
 
 ## Scope, on purpose
 

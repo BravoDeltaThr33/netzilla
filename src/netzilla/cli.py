@@ -5,6 +5,7 @@
     netzilla --tab wifi            open on a tab (its name, any case)
     netzilla --graphics text       force text graphs (auto | pixel | text)
     netzilla --terminal            show what netzilla detects about this terminal
+    netzilla --window              netzilla in a window of its own (needs tkinter)
     netzilla --offline             local tools only, no network calls
     netzilla ip 8.8.8.8 --json     one-shot scriptable lookup, no TUI
     netzilla subnet 10.0.0.0/22
@@ -74,6 +75,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--terminal", action="store_true",
         help="print what netzilla detects about this terminal and exit",
     )
+    parser.add_argument(
+        "--window", action="store_true",
+        help="open netzilla in a window of its own instead of this terminal, drawn "
+             "as in a pixel-graphics terminal with a CRT glow (needs tkinter; "
+             "netzilla --window --help lists its options)",
+    )
     parser.add_argument("--config", help="path to an alternative config.toml")
     parser.add_argument(
         "--offline", action="store_true",
@@ -106,6 +113,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    words = sys.argv[1:] if argv is None else list(argv)
+    if "--window" in words:
+        # The window has options of its own (--font-size, --no-crt…).
+        from .window import main as window_main
+
+        return window_main([word for word in words if word != "--window"])
     _safe_streams()
     try:
         return _main(argv)

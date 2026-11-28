@@ -140,6 +140,9 @@ class Config:
     # [display]
     graphics: str = "auto"
     notify: bool = True          # desktop notification when a long run ends
+    # [window] netzilla's own window (netzilla --window, netzilla.exe)
+    window_font_size: int = 0    # text size in pixels; 0 = fit DASH to the screen
+    window_crt: bool = True      # phosphor glow and scanlines over the window
 
     # ---------------------------------------------------------------- load
     @classmethod
@@ -188,6 +191,15 @@ class Config:
             mode = str(display.get("graphics", cfg.graphics)).strip().lower()
             cfg.graphics = mode if mode in GRAPHICS_MODES else "auto"
             cfg.notify = bool(display.get("notify", cfg.notify))
+
+        window = raw.get("window", {})
+        if isinstance(window, dict):
+            try:
+                size = int(window.get("font_size", cfg.window_font_size))
+            except (TypeError, ValueError):
+                size = 0
+            cfg.window_font_size = size if 0 < size <= 64 else 0
+            cfg.window_crt = bool(window.get("crt", cfg.window_crt))
         return cfg
 
     # ---------------------------------------------------------------- save
@@ -204,6 +216,10 @@ class Config:
             "display": {
                 "graphics": self.graphics if self.graphics in GRAPHICS_MODES else "auto",
                 "notify": self.notify,
+            },
+            "window": {
+                "font_size": int(self.window_font_size or 0),
+                "crt": bool(self.window_crt),
             },
         }
         if self.user_agent and self.user_agent != DEFAULT_USER_AGENT:

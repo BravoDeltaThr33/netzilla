@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "netzilla"
-version = "4.7.0"
+version = "4.8.0"
 description = "Retro terminal TUI for network engineers: Wi-Fi/RF analysis, LAN diagnostics (ARP/DHCP/SNMP/syslog), DNS/RDAP/DoH, BGP, TLS/CT, threat intel and config review — free and open data sources only, with pixel graphs in kitty and Ghostty."
 readme = "README.txt"
 requires-python = ">=3.10"
@@ -13,6 +13,7 @@ authors = [{ name = "netzilla" }]
 keywords = ["network", "tui", "netops", "noc", "dns", "bgp", "security", "wifi", "kitty", "ghostty"]
 classifiers = [
     "Environment :: Console",
+    "Environment :: Win32 (MS Windows)",
     "Intended Audience :: System Administrators",
     "Operating System :: POSIX :: Linux",
     "Operating System :: MacOS",
@@ -41,8 +42,14 @@ dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
 [project.scripts]
 netzilla = "netzilla.cli:main"
 
+# netzilla in a window of its own (tkinter), with no console behind it on
+# Windows.
+[project.gui-scripts]
+netzilla-window = "netzilla.window:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-netzilla = ["*.tcss", "data/*.csv", "data/*.csv.gz", "data/*.png"]
+netzilla = ["*.tcss", "data/*.csv", "data/*.csv.gz", "data/*.png", "data/fonts/*.ttf",
+            "data/fonts/*.txt"]

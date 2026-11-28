@@ -1,7 +1,7 @@
 ===============================================================================
- netzilla 4.7.0
+ netzilla 4.8.0
  A retro terminal toolkit for network administrators
- Runs on Linux, macOS and Windows
+ Runs on Linux, macOS and Windows, in a terminal or a window of its own
  Free and open data sources only · pixel graphs in kitty, Ghostty,
  Windows Terminal and WezTerm
 ===============================================================================
@@ -31,6 +31,47 @@ openssl, ping, traceroute, mtr) that no API should be replacing.
 -------------------------------------------------------------------------------
  1. WHAT'S NEW
 -------------------------------------------------------------------------------
+
+ 4.8.0 — netzilla in a window of its own, and netzilla.exe for Windows.
+
+   netzilla.exe is netzilla as one Windows program: double-click it and
+   netzilla opens in its own window, drawn the way Ghostty draws it on
+   Linux, pixel graphs and all. No terminal, no Python and nothing else to
+   install. 3c has where to get it.
+
+   The window
+     netzilla runs as always, but it writes to a terminal kept inside the
+     window instead of a real one, and every cell is painted from that:
+     JetBrains Mono (Ghostty's own font, now part of netzilla) at Ghostty's
+     cell size, the theme's 24-bit colours, box drawing, blocks, sextants
+     and braille drawn to the pixel as Ghostty draws them, and the graphs,
+     the DASH banner and the beast's breath as pictures, through the same
+     kitty graphics protocol. A CRT glow and scanlines lie over the whole
+     window; Ctrl+P → "Window: CRT glow and scanlines" turns them off for
+     the plain Ghostty look, and the window remembers.
+   Keys and the mouse
+     Every key reaches netzilla with the name it has on Linux (Ctrl+T,
+     Shift+Tab, F1 to F12…), and clicks, drags and the wheel work as in a
+     terminal. The window's own keys: Ctrl + and Ctrl − change the text
+     size (remembered), Ctrl 0 goes back to the size that fits DASH, F11 or
+     Alt+Enter is full screen, Ctrl+V or Shift+Insert pastes and
+     Ctrl+click opens a link. F4 copies straight to the clipboard. When a
+     long run ends while the window is behind others, the title bar says
+     so and the taskbar button flashes.
+   Size
+     The window opens at DASH's 160 x 50, with the text as large as fits
+     the screen (up to 13 points). Making the window bigger or smaller
+     gives netzilla more or fewer cells, as a terminal would.
+   On Linux and macOS too
+     netzilla --window (or netzilla-window) opens the same window wherever
+     Python has tkinter; on Debian, Ubuntu and Mint that is
+     sudo apt install python3-tk.
+   netzilla.exe is built by GitHub
+     GitHub builds netzilla.exe on Windows from every change, starts it
+     once to check that it draws DASH and answers keys, and keeps it with
+     the run. packaging/build_exe.py builds it on any Windows PC with
+     Python. 1034 tests (52 new).
+
 
  4.7.0 — what Windows was missing, built in.
 
@@ -1433,7 +1474,7 @@ a terminal (Ctrl+Alt+T opens one on both).
  STEP 4 — Unpack and install netzilla
  ------------------------------------
      cd ~/Downloads
-     tar -xzf netzilla-4.7.0.tar.gz
+     tar -xzf netzilla-4.8.0.tar.gz
      cd netzilla
      pipx install .
 
@@ -1514,7 +1555,7 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
  STEP 3 — Unpack and install netzilla
  -------------------------------------
      cd ~/Downloads
-     tar -xzf netzilla-4.7.0.tar.gz
+     tar -xzf netzilla-4.8.0.tar.gz
      cd netzilla
      pipx install .
 
@@ -1561,9 +1602,36 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
 
 -------------------------------- 3c. WINDOWS --------------------------------
 
+ THE QUICK WAY — netzilla.exe
+ ----------------------------
+ netzilla.exe is the whole of netzilla in one program, in a window of its
+ own: no Python, no terminal, nothing to install. Put it anywhere (the
+ Desktop, Downloads) and double-click it.
+
+ Where to get it: on netzilla's GitHub page, Actions → netzilla.exe →
+ the newest run → Artifacts → netzilla-windows (a zip with netzilla.exe
+ in it; GitHub asks you to sign in to download). When a release has been
+ made, netzilla.exe is also attached to it under Releases, where anyone
+ can download it. Or build it yourself, on Windows with Python:
+
+     py -m pip install . pyinstaller
+     py packaging\build_exe.py
+
+ which leaves it in the dist folder.
+
+ The first time, Windows SmartScreen may say it "protected your PC" from
+ an app it hasn't seen before: choose More info → Run anyway. Settings
+ and keys are kept in %APPDATA%\netzilla, as with the pipx install, so
+ both can be used side by side. Everything below about the local tools,
+ Wi-Fi location access, the firewall and Administrator rights applies to
+ netzilla.exe too (right-click it → Run as administrator for ROGUE DHCP).
+
+ THE PIPX WAY — netzilla in Windows Terminal
+ --------------------------------------------
 These steps work on Windows 10 (version 1809 or newer) and Windows 11.
 Commands go in Windows Terminal, which opens PowerShell: on Windows 11,
-right-click Start and choose Terminal.
+right-click Start and choose Terminal. `netzilla --window` then opens the
+same window as netzilla.exe.
 
 
  STEP 1 — Install Python
@@ -1588,7 +1656,7 @@ right-click Start and choose Terminal.
  STEP 3 — Unpack and install netzilla
  ------------------------------------
      cd ~/Downloads
-     tar -xzf netzilla-4.7.0.tar.gz
+     tar -xzf netzilla-4.8.0.tar.gz
      cd netzilla
      pipx install .
 
@@ -1725,15 +1793,17 @@ right-click Start and choose Terminal.
 
  Pixel graphs: kitty and Ghostty (Linux and macOS) draw them with the
  kitty graphics protocol; Windows Terminal 1.22 and later (Windows) and
- WezTerm (all three) with Sixel. Everywhere else the graphs are text.
+ WezTerm (all three) with Sixel. Everywhere else the graphs are text,
+ except in netzilla's own window (netzilla.exe, netzilla --window), which
+ draws them in pixels on every system.
 
 
 -------------------------------- 3e. ALL SYSTEMS --------------------------------
 
- UPGRADING FROM AN EARLIER VERSION (any 1.x, 2.x, 3.x or 4.x -> 4.7.0)
+ UPGRADING FROM AN EARLIER VERSION (any 1.x, 2.x, 3.x or 4.x -> 4.8.0)
  ----------------------------------------------------------------------
      cd ~/Downloads
-     tar -xzf netzilla-4.7.0.tar.gz
+     tar -xzf netzilla-4.8.0.tar.gz
      cd netzilla
      pipx install --force .
      pipx inject netzilla speedtest-cli      # optional; --force wipes it
@@ -1972,6 +2042,15 @@ right-click Start and choose Terminal.
    Q                     quit (Ctrl+Q anywhere, even while typing; Ctrl+C
                          too, except in a text box, where it copies)
 
+ In netzilla's own window (netzilla.exe, netzilla --window), also:
+
+   Ctrl + / Ctrl −       bigger / smaller text (remembered)
+   Ctrl 0                the text size at which DASH fits the screen
+   F11 or Alt+Enter      full screen, and back
+   Ctrl+V, Shift+Insert  paste
+   Ctrl+click            open a link
+   Ctrl+P → Window       the same, and the CRT glow and scanlines on or off
+
  The footer shows the keys that work where you are: T and Q drop out of it
  while a text box has the cursor, because there they type a letter.
 
@@ -1987,6 +2066,13 @@ right-click Start and choose Terminal.
    netzilla --terminal               what netzilla detects about this
                                      terminal, and why graphs will be pixels
                                      or text
+   netzilla --window                 netzilla in a window of its own instead
+                                     of this terminal (needs tkinter); also
+                                     netzilla-window, and on Windows
+                                     netzilla.exe. It takes --theme, --tab,
+                                     --graphics, --config and --offline, and:
+     --font-size PX                  text size in pixels for this run
+     --no-crt / --crt                without / with the glow and scanlines
    netzilla --no-probe               don't ask the terminal at start-up;
                                      detect from the environment only
    netzilla --offline                no network calls; local tools and the
@@ -2135,6 +2221,18 @@ right-click Start and choose Terminal.
                        sixel.py (the Sixel encoder, marker cells and the
                        overlay that redraws pictures after every frame) and
                        pixels.py (which of the two this run uses)
+     window/           4.8: netzilla in a window of its own (netzilla.exe,
+                       netzilla --window). screen.py is the terminal kept
+                       in the window (text, colours, links, the clipboard,
+                       kitty graphics); glyphs.py draws box drawing,
+                       blocks, sextants and braille as Ghostty does;
+                       fonts.py picks JetBrains Mono and the system's
+                       fallback fonts and Ghostty's cell size; paint.py
+                       paints the cells that changed with Pillow, and the
+                       CRT glow and scanlines; keys.py turns keys and the
+                       mouse into what Ghostty sends; driver.py is the
+                       Textual driver between the two; tkwindow.py is the
+                       window itself (tkinter); icon.py draws the icon
      clipboard.py      F4: desktop clipboard tool, OSC 52, or a file
      notify.py         desktop notifications through the terminal
      netzilla.tcss     Textual CSS
@@ -2172,6 +2270,11 @@ right-click Start and choose Terminal.
        bt_numbers.csv.gz          Bluetooth company IDs and service UUIDs
        oui.csv.gz                 the full IEEE registry, all three block
                                   sizes (~54,000 prefixes, 570 KB)
+       fonts/                     JetBrains Mono NL, regular and bold, with
+                                  its SIL Open Font License (OFL.txt)
+   packaging/build_exe.py   builds netzilla.exe with PyInstaller
+   .github/workflows/       windows-exe.yml: GitHub builds netzilla.exe on
+                            Windows, starts it to check it, and keeps it
    docs/showcase/      screenshots — pixel graphs as kitty/Ghostty show them,
                        text graphs as any other terminal does — and
                        live-air.gif (Wi-Fi data invented; lookups of public
@@ -2226,6 +2329,14 @@ right-click Start and choose Terminal.
                        fake sockets, the Sixel encoder and overlay
                        (scrolling, things on top, dialogs, the bottom row),
                        DASH in Sixel, and the Sixel terminal detection
+     test_v48.py       the window: its terminal against Textual's output
+                       and kitty uploads, every sextant and box-drawing
+                       piece to the pixel, the font's cell size, repainting
+                       only what changed, the CRT, keys and the mouse
+                       through Textual's own parser, netzilla driven
+                       through the window's driver, the [window] settings,
+                       the .exe build; and, where there is a display, the
+                       real window's self-test
      conftest.py       stubs out every real LAN probe, so running the tests
                        never sends a packet to the devices on your network
 
@@ -2240,8 +2351,10 @@ right-click Start and choose Terminal.
      pip install -e ".[dev]"
      pytest -q
 
- 982 checks, about five minutes, run on Linux: macOS and Windows are tested
- by faking them, with their tools' recorded output. No network calls, no
+ 1034 checks, about five minutes, run on Linux: macOS and Windows are tested
+ by faking them, with their tools' recorded output. One check opens
+ netzilla's real window and is skipped where there is no display; GitHub
+ runs it on Windows with every build of netzilla.exe. No network calls, no
  root, and no real API key is used or printed — HTTP is served by httpx's
  MockTransport using the example responses from each vendor's
  documentation, the LAN/DHCP/SNMP/NTP protocol logic is exercised as pure
@@ -2258,7 +2371,30 @@ right-click Start and choose Terminal.
      Open a new terminal, or run ~/.local/bin/netzilla. `pipx ensurepath`
      fixes it permanently. On Windows the message reads "netzilla is not
      recognized…": open a new Windows Terminal, or run `py -m pipx
-     ensurepath` again; netzilla.exe is in %USERPROFILE%\.local\bin.
+     ensurepath` again; pipx puts its netzilla.exe in
+     %USERPROFILE%\.local\bin.
+
+ The window doesn't open: "netzilla's window needs tkinter"
+     netzilla --window draws with Python's tkinter, which some Linux
+     Pythons leave out: sudo apt install python3-tk (Debian, Ubuntu,
+     Mint) or sudo dnf install python3-tkinter (Fedora); with Homebrew's
+     Python on macOS, brew install python-tk. netzilla.exe has it built in.
+
+ Windows: SmartScreen "protected your PC" from netzilla.exe
+     netzilla.exe isn't signed by a publisher Windows knows, so the first
+     start asks: More info → Run anyway. Some antivirus programs distrust
+     programs packed with PyInstaller as well; if yours quarantines
+     netzilla.exe, restore it there, or use the pipx install (3c).
+
+ netzilla.exe stopped with an error
+     It says so in a message box, and the details are in
+     %APPDATA%\netzilla\netzilla-window.log, which is what a bug report
+     needs.
+
+ The window's text is too small or too big
+     Ctrl + and Ctrl − change it (the window remembers), Ctrl 0 goes back
+     to the size at which DASH fits your screen, and --font-size 18 picks
+     a size for one run.
 
  Windows: borders look broken or the colours are missing
      The old console window can't draw netzilla properly. Run it in Windows
@@ -2681,6 +2817,9 @@ right-click Start and choose Terminal.
 
      pipx uninstall netzilla
      Remove-Item -Recurse $env:APPDATA\netzilla
+
+ netzilla.exe is just the file: delete it. Its settings are the same
+ %APPDATA%\netzilla folder.
 
 
 ===============================================================================

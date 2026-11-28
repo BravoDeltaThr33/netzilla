@@ -217,9 +217,18 @@ class NetzillaApp(App):
         """'kitty' or 'sixel' — how pixel graphs reach this terminal."""
         return self.terminal.image_protocol()
 
+    @property
+    def in_window(self) -> bool:
+        """True in netzilla's own window (netzilla.exe, netzilla --window)."""
+        return bool(getattr(getattr(self, "_driver", None), "is_window", False))
+
     def _measure_cells(self) -> tuple[int, int] | None:
-        """The cell size images are drawn at: Windows Terminal's Sixel cell
-        is always 10 x 20; elsewhere what the terminal reports."""
+        """The cell size images are drawn at: netzilla's own window knows its
+        cells exactly; Windows Terminal's Sixel cell is always 10 x 20;
+        elsewhere what the terminal reports."""
+        window_cell = getattr(getattr(self, "_driver", None), "cell_px", None)
+        if window_cell:
+            return window_cell
         if self.image_protocol == "sixel" and self.terminal.sixel_cell():
             return self.terminal.sixel_cell()
         return termcaps.cell_size_from_ioctl() or self.terminal.cell_px
@@ -320,6 +329,13 @@ class NetzillaApp(App):
                     pass
 
     def on_resize(self, event) -> None:
+        if self.in_window:
+            # The window's text size can change (Ctrl + / Ctrl -): pictures
+            # follow its new cells, and DASH's TERMINAL panel says so.
+            cell = self._measure_cells()
+            if cell and cell != self.terminal.cell_px:
+                self.terminal = termcaps.with_cell_px(self.terminal, cell)
+                termcaps.set_current(self.terminal)
         if self._pixels_ready:
             self._cell_px = self._measure_cells() or self._cell_px
 
@@ -434,6 +450,17 @@ class NetzillaApp(App):
                             self.action_toggle_controls)
         yield SystemCommand("Clear cache", "Forget every cached API response (Ctrl+R)",
                             self.action_clear_cache)
+        if self.in_window:
+            for title, help_text, action in (
+                ("Window: CRT glow and scanlines", "Turn the CRT look on or off", "crt"),
+                ("Window: bigger text", "Larger text, fewer cells (Ctrl +)", "zoom_in"),
+                ("Window: smaller text", "Smaller text, more cells (Ctrl -)", "zoom_out"),
+                ("Window: text size to fit DASH", "The size at which 160 x 50 fits the "
+                 "screen (Ctrl 0)", "zoom_reset"),
+                ("Window: full screen", "Fill the screen, or go back (F11)", "fullscreen"),
+            ):
+                yield SystemCommand(title, help_text,
+                                    lambda action=action: self._driver.window_command(action))
         yield SystemCommand("Quit", "Quit netzilla (Q)", self.action_quit)
         if screen.query("HelpPanel"):
             yield SystemCommand("Keys", "Hide the keys and widget help panel",

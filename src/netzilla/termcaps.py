@@ -73,7 +73,7 @@ PRETTY = {
     "apple-terminal": "Apple Terminal", "vscode": "VS Code terminal",
     "xterm": "xterm", "tmux": "tmux", "screen": "GNU screen", "rio": "Rio",
     "contour": "Contour", "mintty": "mintty", "warp": "Warp", "tabby": "Tabby",
-    "unknown": "unknown terminal",
+    "netzilla-window": "netzilla window", "unknown": "unknown terminal",
 }
 
 
@@ -739,7 +739,22 @@ def with_cell_px(info: TerminalInfo, cell_px: tuple[int, int] | None) -> Termina
     return replace(info, cell_px=cell_px) if cell_px else info
 
 
+def window_info(cell_px: tuple[int, int] | None) -> TerminalInfo:
+    """netzilla's own window (window/): it draws the kitty graphics protocol
+    with Unicode placeholders, 24-bit colour, OSC 8 links (Ctrl+click), the
+    OSC 52 clipboard and OSC 777 notifications, at a cell size it knows."""
+    from . import __version__
+
+    return TerminalInfo(
+        name="netzilla-window", version=__version__, identified_by="its own window",
+        truecolor=True, probed=False, kitty_graphics=True, feature_query=True,
+        placeholders=True, sixel=False, cell_px=cell_px, hyperlinks=True,
+        clipboard=True, notify="osc777",
+    )
+
+
 __all__ = ["TerminalInfo", "detect", "probe", "probe_windows", "startup", "current",
            "set_current", "parse_xtversion", "parse_replies", "version_tuple", "wrap_tmux",
-           "cell_size_from_ioctl", "with_cell_px", "tmux_client_info", "probe_query",
+           "cell_size_from_ioctl", "with_cell_px", "window_info", "tmux_client_info",
+           "probe_query",
            "use_truecolour", "PRETTY", "SIXEL_AUTO"]

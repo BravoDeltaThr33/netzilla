@@ -1,0 +1,89 @@
+# netzilla.exe: netzilla in a window of its own, built on Windows with
+# PyInstaller, started once to prove it works, and kept with the run
+# (Actions → this run → Artifacts → netzilla-windows).
+#
+# Push a tag such as v4.8.0 and the .exe is also attached to that tag's
+# GitHub release, where anyone can download it.
+
+name: netzilla.exe
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    permissions:
+      contents: write          # only used to attach the .exe to a tag's release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install netzilla and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install . pyinstaller pytest pytest-asyncio
+
+      - name: Build netzilla.exe
+        run: python packaging/build_exe.py
+
+      - name: Start netzilla.exe (self-test)
+        shell: pwsh
+        run: |
+          $here = (Get-Location).Path
+          $argv = '--offline', '--selftest', '20', '--press', 'F2',
+                  '--report', "`"$here\selftest.json`"", '--screenshot', "`"$here\selftest.png`""
+          $p = Start-Process -FilePath dist\netzilla.exe -ArgumentList $argv -WorkingDirectory $here -PassThru
+          $null = $p.Handle
+          if (-not $p.WaitForExit(180000)) {
+            $p.Kill()
+            throw "netzilla.exe did not finish its self-test"
+          }
+          $log = Join-Path $env:APPDATA 'netzilla\netzilla-window.log'
+          if (Test-Path $log) { Get-Content $log }
+          if (-not (Test-Path selftest.json)) { throw "netzilla.exe wrote no report" }
+          Get-Content selftest.json
+          $r = Get-Content selftest.json -Raw | ConvertFrom-Json
+          if ($p.ExitCode -ne 0) { throw "netzilla.exe exited with $($p.ExitCode)" }
+          if (-not $r.frozen) { throw "this is not the built .exe" }
+          if ($r.tab -ne 'settings') { throw "F2 did not open SETTINGS" }
+          if (-not $r.pixel_graphs) { throw "graphs are not drawn in pixels" }
+          if ($r.font -ne 'JetBrainsMonoNL-Regular.ttf') { throw "the bundled font is missing" }
+
+      - name: Keep netzilla.exe with this run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: netzilla-windows
+          path: |
+            dist/netzilla.exe
+            selftest.png
+            selftest.json
+          if-no-files-found: warn
+
+      - name: Window tests on Windows
+        run: python -m pytest -q tests/test_v48.py
+
+      - name: Attach netzilla.exe to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = '${{ github.ref_name }}'
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag dist/netzilla.exe --title "netzilla $tag" --notes "netzilla.exe: netzilla in a window of its own, for Windows 10 and 11. See README.txt for what's new."
+          } else {
+            gh release upload $tag dist/netzilla.exe --clobber
+          }

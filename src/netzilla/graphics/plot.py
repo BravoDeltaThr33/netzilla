@@ -29,6 +29,9 @@ except Exception:  # pragma: no cover - exercised only without Pillow
     HAVE_PIL = False
 
 SS = 2                       # supersampling factor
+# False in netzilla's own window when its CRT is on: the window lays the
+# same scanlines over everything, so pictures must not bring their own.
+SCANLINES = True
 
 
 # ------------------------------------------------------------------ colours
@@ -431,6 +434,8 @@ def logo(lines: Sequence[str], frame: Frame, theme: Theme, colours: Sequence[str
 def add_scanlines(image):
     """Fine dark lines every third pixel row, faintly, for the CRT."""
     image = image.convert("RGBA")
+    if not SCANLINES:
+        return image
     width, height = image.size
     scan = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     scan_draw = ImageDraw.Draw(scan)

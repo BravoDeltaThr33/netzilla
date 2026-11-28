@@ -610,7 +610,9 @@ class DashboardPane(LookupPane):
         good, muted = self.palette.success, self.palette.muted
         explain = self._app_setting("graphics_why", None)
         why = explain() if callable(explain) else info.graphics_reason()
-        found_by = "asked it" if info.identified_by != "environment" else "environment"
+        window = info.name == "netzilla-window"
+        found_by = ("built in" if window else
+                    "asked it" if info.identified_by != "environment" else "environment")
         rows = [
             ("Terminal", f"{info.where}  ({found_by})"),
             ("Graphs", graphics),
@@ -620,7 +622,8 @@ class DashboardPane(LookupPane):
                 ("clickable" if info.hyperlinks else "plain",
                  good if info.hyperlinks else muted),
                 (" · F4 to ", muted),
-                ("terminal" if info.clipboard else "clipboard tool / file",
+                ("clipboard" if window else
+                 "terminal" if info.clipboard else "clipboard tool / file",
                  good if info.clipboard else muted))),
             ("Notifications", Text(f"yes ({info.notify.upper()})", style=good)
              if info.notify else Text("not supported", style=muted)),

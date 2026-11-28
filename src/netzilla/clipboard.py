@@ -153,6 +153,15 @@ def save_file(text: str, directory: Path | None = None) -> Path:
 
 def copy(text: str, app=None, directory: Path | None = None) -> str:
     """Put text on a clipboard; returns a short description of where."""
+    if getattr(getattr(app, "_driver", None), "is_window", False):
+        # netzilla's own window puts it straight on the desktop clipboard
+        # (no clip.exe console flashing up).
+        try:
+            app.copy_to_clipboard(text)
+        except Exception:
+            pass
+        else:
+            return "to the clipboard"
     if _local_session():
         done = _via_tool(text)
         if done:
