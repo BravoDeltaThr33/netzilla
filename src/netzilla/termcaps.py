@@ -12,15 +12,22 @@ environment variables terminals set when it cannot ask:
   DA1            CSI c       -> every terminal answers this one, last, so its
                                 reply means "nothing else is coming"
 
-Pixel graphics need the kitty graphics protocol *with Unicode placeholders*:
-the image is drawn wherever special placeholder characters appear, so it
-moves and redraws with the text like any other cell — the only image method
-that coexists with a full-screen text interface. kitty has it since 0.28.0
-and Ghostty since its 1.0 release; WezTerm, Konsole and iTerm2 speak other
-parts of the protocol (or other protocols) but not this one, so they get
-netzilla's text graphs. Inside tmux it works when tmux passes the graphics
-commands through (`set -g allow-passthrough on`) to kitty or Ghostty — the
-probe tries exactly that.
+Pixel graphics come two ways:
+
+  kitty  the kitty graphics protocol *with Unicode placeholders*: the image
+         is drawn wherever special placeholder characters appear, so it
+         moves and redraws with the text like any other cell. kitty has it
+         since 0.28.0 and Ghostty since its 1.0 release. Inside tmux it works
+         when tmux passes the graphics commands through (`set -g
+         allow-passthrough on`) to kitty or Ghostty — the probe tries that.
+  Sixel  for Windows Terminal (1.22 and later) and WezTerm, which say so in
+         their DA1 answer (attribute 4) but have no placeholders: the images
+         are drawn over marker cells after every frame (graphics/sixel.py).
+         Other terminals that report Sixel (xterm in VT340 mode, foot,
+         Konsole…) can have it by choosing Pixel on SETTINGS.
+
+Windows consoles have no termios: there the same questions are asked through
+the console API, with the console switched to VT input for a moment.
 
 Nothing here is required: a terminal that answers nothing is simply treated
 as a capable text terminal, and every graph has a text form.
@@ -48,10 +55,16 @@ TMUX_FEATURE_Q = "\x1b_Ga=q,i=34,e=T,U=1\x1b\\"
 _XTVERSION_RE = re.compile(rb"\x1bP>\|([^\x1b]*)\x1b\\")
 _APC_RE = re.compile(rb"\x1b_G([^;\x1b]*);?([^\x1b]*)\x1b\\")
 _CELL_RE = re.compile(rb"\x1b\[6;(\d+);(\d+)t")
-_DA1_RE = re.compile(rb"\x1b\[\?[\d;]*c")
+_DA1_RE = re.compile(rb"\x1b\[\?([\d;]*)c")
 
 # Minimum versions with Unicode-placeholder support.
 PLACEHOLDER_SINCE = {"kitty": (0, 28, 0), "ghostty": (1, 0, 0)}
+# Terminals whose Sixel images netzilla uses on its own (Auto); any other
+# terminal that reports Sixel gets them by choosing Pixel.
+SIXEL_AUTO = ("windows-terminal", "wezterm")
+SIXEL_ATTRIBUTE = 4           # "Sixel graphics" in a DA1 answer
+# Windows Terminal draws Sixel in a virtual 10 x 20 cell, whatever the font.
+WT_SIXEL_CELL = (10, 20)
 
 PRETTY = {
     "kitty": "kitty", "ghostty": "Ghostty", "wezterm": "WezTerm",
@@ -79,6 +92,7 @@ class TerminalInfo:
     kitty_graphics: bool = False     # answered the kitty graphics query
     feature_query: bool = False      # answered the e= feature query
     placeholders: bool = False       # Unicode placeholders will work
+    sixel: bool = False              # reported Sixel graphics (DA1 attribute 4)
     passthrough: bool = False        # graphics must be wrapped for tmux
     cell_px: tuple[int, int] | None = None   # (width, height) of one cell
     hyperlinks: bool = False
@@ -102,8 +116,25 @@ class TerminalInfo:
             parts.append("over SSH")
         return " · ".join(parts)
 
+    def sixel_auto(self) -> bool:
+        """Sixel images netzilla uses without being asked."""
+        return (self.sixel and self.name in SIXEL_AUTO and not self.multiplexer
+                and (self.cell_px is not None or self.name == "windows-terminal"))
+
     def pixel_capable(self) -> bool:
-        return self.placeholders and self.truecolor
+        return (self.placeholders and self.truecolor) or self.sixel_auto()
+
+    def image_protocol(self) -> str:
+        """'kitty' or 'sixel': how pixel graphs reach this terminal."""
+        if self.placeholders:
+            return "kitty"
+        if self.sixel or self.name in SIXEL_AUTO:
+            return "sixel"
+        return "kitty"
+
+    def sixel_cell(self) -> tuple[int, int] | None:
+        """The cell size Sixel images must be drawn at, when it is fixed."""
+        return WT_SIXEL_CELL if self.name == "windows-terminal" else None
 
     def graphics_mode(self, setting: str = "auto") -> str:
         """'pixel' or 'text' for a SETTINGS choice of auto / pixel / text."""
@@ -117,6 +148,8 @@ class TerminalInfo:
     def graphics_reason(self) -> str:
         """One sentence: why auto chose what it chose."""
         if self.pixel_capable():
+            if self.image_protocol() == "sixel":
+                return f"{self.label} draws Sixel images — graphs are drawn in pixels."
             how = " through tmux passthrough" if self.passthrough else ""
             return (f"{self.label} draws kitty-protocol images with Unicode "
                     f"placeholders{how} — graphs are drawn in pixels.")
@@ -157,7 +190,8 @@ def parse_xtversion(reply: str) -> tuple[str, str]:
 def parse_replies(data: bytes) -> dict:
     """Pull every reply netzilla asked for out of what the terminal sent."""
     found: dict = {"xtversion": "", "kitty_ok": False, "feature": None,
-                   "cell_px": None, "da1": False, "passthrough_ok": False}
+                   "cell_px": None, "da1": False, "da1_params": (),
+                   "passthrough_ok": False}
     match = _XTVERSION_RE.search(data)
     if match:
         found["xtversion"] = match.group(1).decode("utf-8", "replace")
@@ -178,7 +212,10 @@ def parse_replies(data: bytes) -> dict:
         height, width = int(cell.group(1)), int(cell.group(2))
         if width > 0 and height > 0:
             found["cell_px"] = (width, height)
-    found["da1"] = bool(_DA1_RE.search(data))
+    da1 = _DA1_RE.search(data)
+    found["da1"] = bool(da1)
+    if da1:
+        found["da1_params"] = tuple(int(p) for p in da1.group(1).split(b";") if p.isdigit())
     return found
 
 
@@ -188,8 +225,11 @@ def wrap_tmux(sequence: str) -> str:
     return "\x1bPtmux;" + sequence.replace("\x1b", "\x1b\x1b") + "\x1b\\"
 
 
-def probe_query(in_tmux: bool = False, graphics: bool = True) -> str:
+def probe_query(in_tmux: bool = False, graphics: bool = True, windows: bool = False) -> str:
     """Everything the probe asks, in order — DA1 last, as the sentinel."""
+    if windows:
+        # No kitty questions: no Windows terminal has the placeholders.
+        return XTVERSION_Q + CELL_Q + DA1_Q
     if in_tmux:
         return (XTVERSION_Q + wrap_tmux(TMUX_KITTY_Q) + wrap_tmux(TMUX_FEATURE_Q)
                 + CELL_Q + DA1_Q)
@@ -268,6 +308,122 @@ def probe(timeout: float = 0.35, in_tmux: bool = False, graphics: bool = True) -
     finally:
         os.close(fd)
     return data
+
+
+class _WinConsole:
+    """The Windows console, switched to VT input for the length of a probe
+    so the terminal's answers arrive as characters (ctypes, kernel32)."""
+
+    VT_INPUT = 0x0200            # ENABLE_VIRTUAL_TERMINAL_INPUT
+    VT_OUTPUT = 0x0004           # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+    PROCESSED_OUTPUT = 0x0001
+    KEY_EVENT = 0x0001
+
+    def __init__(self) -> None:
+        import ctypes
+        from ctypes import wintypes
+
+        class KeyEvent(ctypes.Structure):
+            _fields_ = [("bKeyDown", wintypes.BOOL), ("wRepeatCount", wintypes.WORD),
+                        ("wVirtualKeyCode", wintypes.WORD),
+                        ("wVirtualScanCode", wintypes.WORD),
+                        ("UnicodeChar", ctypes.c_uint16),
+                        ("dwControlKeyState", wintypes.DWORD)]
+
+        class Event(ctypes.Union):
+            _fields_ = [("KeyEvent", KeyEvent), ("raw", ctypes.c_byte * 16)]
+
+        class InputRecord(ctypes.Structure):
+            _fields_ = [("EventType", wintypes.WORD), ("Event", Event)]
+
+        self.ctypes, self.wintypes = ctypes, wintypes
+        self.InputRecord = InputRecord
+        self.kernel32 = None
+        self.saved: tuple[int, int] | None = None
+
+    def open(self) -> None:
+        ctypes, wintypes = self.ctypes, self.wintypes
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        self.kernel32 = kernel32
+        self.hin = kernel32.GetStdHandle(-10)
+        self.hout = kernel32.GetStdHandle(-11)
+        modes = wintypes.DWORD(), wintypes.DWORD()
+        if not (kernel32.GetConsoleMode(self.hin, ctypes.byref(modes[0]))
+                and kernel32.GetConsoleMode(self.hout, ctypes.byref(modes[1]))):
+            raise OSError("not a console")
+        self.saved = (modes[0].value, modes[1].value)
+        kernel32.SetConsoleMode(self.hin, self.VT_INPUT)
+        kernel32.SetConsoleMode(self.hout, self.saved[1] | self.VT_OUTPUT
+                                | self.PROCESSED_OUTPUT)
+
+    def write(self, text: str) -> None:
+        written = self.wintypes.DWORD()
+        self.kernel32.WriteConsoleW(self.hout, text, len(text),
+                                    self.ctypes.byref(written), None)
+
+    def read(self, timeout: float) -> str:
+        kernel32 = self.kernel32
+        if kernel32.WaitForSingleObject(self.hin, max(0, int(timeout * 1000))) != 0:
+            return ""
+        records = (self.InputRecord * 128)()
+        count = self.wintypes.DWORD()
+        if not kernel32.ReadConsoleInputW(self.hin, records, 128, self.ctypes.byref(count)):
+            return ""
+        out = []
+        for record in records[:count.value]:
+            key = record.Event.KeyEvent
+            if record.EventType == self.KEY_EVENT and key.bKeyDown and key.UnicodeChar:
+                out.append(chr(key.UnicodeChar) * max(1, key.wRepeatCount))
+        return "".join(out)
+
+    def close(self) -> None:
+        if self.kernel32 is None or self.saved is None:
+            return
+        try:
+            self.kernel32.FlushConsoleInputBuffer(self.hin)
+        finally:
+            self.kernel32.SetConsoleMode(self.hin, self.saved[0])
+            self.kernel32.SetConsoleMode(self.hout, self.saved[1])
+
+
+def probe_windows(timeout: float = 0.35, console=None, clock=time.monotonic) -> bytes:
+    """probe() for a Windows console (Windows Terminal, WezTerm, conhost):
+    XTVERSION, the cell size and DA1, read back through the console API.
+    b"" when there is no console to ask or nothing came back."""
+    if console is None:
+        if os.name != "nt":
+            return b""
+        try:
+            console = _WinConsole()
+        except Exception:
+            return b""
+    try:
+        console.open()
+    except Exception:
+        return b""
+    data = ""
+    try:
+        console.write(probe_query(windows=True))
+        deadline = clock() + timeout
+        while True:
+            left = deadline - clock()
+            if left <= 0:
+                break
+            chunk = console.read(left)
+            if not chunk:
+                continue
+            data += chunk
+            if _DA1_RE.search(data.encode("utf-8", "replace")):
+                data += console.read(0.02)      # a straggler, if any
+                break
+    except Exception:
+        pass
+    finally:
+        try:
+            console.close()
+        except Exception:
+            pass
+    return data.encode("utf-8", "replace")
 
 
 def tmux_client_info(timeout: float = 1.0) -> dict:
@@ -480,9 +636,38 @@ def detect(env=None, replies: bytes | None = None,
                               "— text graphs.")
         placeholders = False
 
-    if env.get("NO_COLOR") is not None and placeholders:
+    # Sixel: the terminal says so in its DA1 answer. Not through a
+    # multiplexer, which answers DA1 itself and would have to pass every
+    # image on.
+    sixel = SIXEL_ATTRIBUTE in (found.get("da1_params") or ()) and not multiplexer
+    pretty = PRETTY.get(name, name)
+    known_cell = bool(found.get("cell_px") or cell_px) or name == "windows-terminal"
+    if not placeholders and name in SIXEL_AUTO and not multiplexer:
+        if sixel and known_cell:
+            reasons = []
+        elif sixel:
+            reasons.insert(0, f"{pretty} did not report its cell size, which Sixel "
+                              "images are drawn to — choose Pixel on SETTINGS to try "
+                              "them anyway.")
+        elif probed and found.get("da1"):
+            reasons.insert(0, (
+                "This Windows Terminal draws no Sixel images yet — version 1.22 and "
+                "later do: update it from the Microsoft Store (or winget upgrade "
+                "Microsoft.WindowsTerminal) for pixel graphs."
+                if name == "windows-terminal" else
+                f"{pretty} did not report Sixel support — text graphs."))
+        else:
+            reasons.insert(0, f"{pretty} did not answer the terminal query, so netzilla "
+                              "can't tell whether it draws Sixel images — choose Pixel on "
+                              "SETTINGS if it does (Windows Terminal 1.22 and later).")
+    elif sixel and not placeholders:
+        reasons.insert(0, f"{pretty} can draw Sixel images — choose Pixel on SETTINGS "
+                          "to have graphs drawn with them (netzilla switches them on "
+                          "by itself in Windows Terminal and WezTerm).")
+
+    if env.get("NO_COLOR") is not None and (placeholders or sixel):
         # Textual turns every colour grey under NO_COLOR, image ids included.
-        placeholders = False
+        placeholders = sixel = False
         reasons.insert(0, "NO_COLOR is set, and pixel graphs need colour — text graphs.")
 
     hyperlinks = name in ("kitty", "ghostty", "wezterm", "iterm2", "foot", "konsole",
@@ -499,7 +684,7 @@ def detect(env=None, replies: bytes | None = None,
         name=name, version=version, identified_by=identified_by,
         multiplexer=multiplexer, multiplexer_version=mux_version, remote=remote,
         truecolor=truecolor, probed=probed, kitty_graphics=kitty_ok or passthrough_ok,
-        feature_query=feature_query, placeholders=placeholders,
+        feature_query=feature_query, placeholders=placeholders, sixel=sixel,
         passthrough=passthrough, cell_px=found.get("cell_px") or cell_px,
         hyperlinks=hyperlinks, clipboard=clipboard, notify=notify,
         reasons=tuple(reasons),
@@ -527,8 +712,11 @@ def startup(allow_probe: bool = True) -> TerminalInfo:
     interactive = sys.stdin.isatty() and sys.stdout.isatty()
     if allow_probe and interactive and env.get("NETZILLA_NO_PROBE", "") in ("", "0"):
         remote = bool(env.get("SSH_CONNECTION") or env.get("SSH_TTY"))
-        replies = probe(timeout=1.2 if remote else 0.35, in_tmux=in_tmux,
-                        graphics=not (env.get("STY") or env.get("ZELLIJ")))
+        if os.name == "nt":
+            replies = probe_windows(timeout=0.35)
+        else:
+            replies = probe(timeout=1.2 if remote else 0.35, in_tmux=in_tmux,
+                            graphics=not (env.get("STY") or env.get("ZELLIJ")))
     tmux = tmux_client_info() if in_tmux else None
     info = detect(env, replies, cell_size_from_ioctl(), tmux=tmux)
     use_truecolour(info, env)
@@ -551,7 +739,7 @@ def with_cell_px(info: TerminalInfo, cell_px: tuple[int, int] | None) -> Termina
     return replace(info, cell_px=cell_px) if cell_px else info
 
 
-__all__ = ["TerminalInfo", "detect", "probe", "startup", "current", "set_current",
-           "parse_xtversion", "parse_replies", "version_tuple", "wrap_tmux",
+__all__ = ["TerminalInfo", "detect", "probe", "probe_windows", "startup", "current",
+           "set_current", "parse_xtversion", "parse_replies", "version_tuple", "wrap_tmux",
            "cell_size_from_ioctl", "with_cell_px", "tmux_client_info", "probe_query",
-           "use_truecolour", "PRETTY"]
+           "use_truecolour", "PRETTY", "SIXEL_AUTO"]

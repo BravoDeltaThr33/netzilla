@@ -7,9 +7,10 @@ A graph is described once (a LineGraph or a SpectrumGraph) and rendered by
          full block outlined in the theme background) and braille dots for
          the spectrum — works in any terminal with a Unicode font;
   pixel  an anti-aliased image drawn by plot.py and shown through the kitty
-         graphics protocol (kitty, Ghostty), sitting exactly where the text
-         graph would: the y-axis labels, the axis line and the channel numbers
-         stay as text either side of it.
+         graphics protocol (kitty, Ghostty) or as Sixel (Windows Terminal,
+         WezTerm), sitting exactly where the text graph would: the y-axis
+         labels, the axis line and the channel numbers stay as text either
+         side of it.
 
 If anything about drawing pixels fails, the text form is returned instead,
 so a graph can never take a view down.
@@ -22,7 +23,7 @@ from typing import Callable, Sequence
 
 from rich.text import Text
 
-from ..colours import SEMANTIC, channel_colour
+from ..colours import channel_colour
 from . import plot
 
 
@@ -62,7 +63,7 @@ class Context:
 
     pixel: bool
     palette: object
-    canvas: object | None = None          # kitty.Canvas for pixel mode
+    canvas: object | None = None          # pixels.Canvas() for pixel mode
     cell_px: tuple[int, int] = (10, 20)
     colour: str = "#62b6ff"               # text-mode block colour
     edge: str = "#000000"                 # text-mode block outline colour
@@ -96,10 +97,10 @@ def _frame(cols: int, rows: int, ctx: Context) -> plot.Frame:
 
 
 def _image_rows(png: bytes, cols: int, rows: int, ctx: Context) -> list[Text]:
-    from . import kitty
+    from . import pixels
 
     image_id = ctx.canvas.upload(png, cols, rows)
-    return kitty.placeholder_rows(image_id, cols, rows)
+    return pixels.placeholder_rows(image_id, cols, rows)
 
 
 # ------------------------------------------------------------------ line graphs

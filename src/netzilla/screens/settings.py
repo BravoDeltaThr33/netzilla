@@ -296,8 +296,13 @@ class SettingsPane(CollapsibleControls, Vertical):
         text.append(" — ", style=palette.muted)
         why = app.graphics_why() if hasattr(app, "graphics_why") else info.graphics_reason()
         if setting == "pixel" and mode == "pixel" and not info.pixel_capable():
-            text.append("forced on — if graphs show as blank boxes, this terminal "
-                        "can't draw them: choose Auto.", style=palette.warning)
+            if getattr(info, "sixel", False):
+                text.append("forced on — drawn as Sixel images, which this terminal "
+                            "says it can show. If graphs show as blank boxes, choose "
+                            "Auto.", style=palette.muted)
+            else:
+                text.append("forced on — if graphs show as blank boxes, this terminal "
+                            "can't draw them: choose Auto.", style=palette.warning)
         elif setting == "pixel" and mode != "pixel":
             text.append(why, style=palette.warning)
         else:

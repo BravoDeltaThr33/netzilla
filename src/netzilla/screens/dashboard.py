@@ -11,14 +11,17 @@ The panels sit side by side in as many columns as the window has room for
 (three on a wide terminal, two on a medium one, one on a narrow one), so the
 whole overview fits on one screen without scrolling.
 
-In a terminal that can show images (kitty, Ghostty) the banner is redrawn in
-pixels — lit tubes in the theme's colours, with a phosphor glow — and the
-NETWORK PULSE graphs are drawn as images. When the window has room, the title
-has a picture either side (graphics/banner.py): on the left a horned beast
-breathing a storm of energy at it, on the right Tokyo at night — as part of
-the banner image, or as sextant characters in any other terminal. The breath
-is alive: while the banner is on screen, its cells step through a loop of
-frames (FIRE_EVERY apart), the colours rolling out from the jaws.
+In a terminal that can show images (kitty, Ghostty; Windows Terminal and
+WezTerm through Sixel) the banner is redrawn in pixels — lit tubes in the
+theme's colours, with a phosphor glow — and the NETWORK PULSE graphs are drawn
+as images. When the window has room, the title has a picture either side
+(graphics/banner.py): on the left a horned beast breathing a storm of energy
+at it, on the right Tokyo at night — as part of the banner image, or as
+sextant characters in any other terminal. The breath is alive: while the
+banner is on screen, its cells step through a loop of frames (FIRE_EVERY
+apart), the colours rolling out from the jaws. With Sixel each frame is laid
+over the banner image as a picture of its own (every other frame, to keep
+the stream to the terminal small), so the banner's text never changes.
 """
 
 from __future__ import annotations
@@ -118,10 +121,10 @@ def pixel_banner(banner_id: int, cols: int, rows: int, window=None, fire_id: int
     """The banner's placeholder cells: the whole banner image, except the
     fire window's cells (col, row, width, height — on the beast, at the
     banner's left), which show the breath's current frame."""
-    from ..graphics import kitty
+    from ..graphics import pixels
 
     if window is None or not fire_id:
-        art = kitty.placeholder_text(banner_id, cols, rows)
+        art = pixels.placeholder_text(banner_id, cols, rows)
         art.justify = "center"
         return art
     col, top, width, height = window
@@ -130,11 +133,11 @@ def pixel_banner(banner_id: int, cols: int, rows: int, window=None, fire_id: int
         if row:
             out.append("\n")
         if top <= row < top + height:
-            out.append(kitty.placeholder_span(banner_id, row, 0, col))
-            out.append(kitty.placeholder_span(fire_id, row - top, 0, width))
-            out.append(kitty.placeholder_span(banner_id, row, col + width, cols))
+            out.append(pixels.placeholder_span(banner_id, row, 0, col))
+            out.append(pixels.placeholder_span(fire_id, row - top, 0, width))
+            out.append(pixels.placeholder_span(banner_id, row, col + width, cols))
         else:
-            out.append(kitty.placeholder_span(banner_id, row, 0, cols))
+            out.append(pixels.placeholder_span(banner_id, row, 0, cols))
     return out
 
 
@@ -310,7 +313,7 @@ class DashboardPane(LookupPane):
         if not self.pixel_graphics:
             banner.update(text_banner(lines, side, palette, cell_w, cell_h, self._fire_frame))
             return
-        from ..graphics import kitty
+        from ..graphics import pixels
 
         try:
             png = banner_art.banner_png(lines, _WIDTH, rows, side, cell_w, cell_h, scheme,
@@ -321,7 +324,7 @@ class DashboardPane(LookupPane):
         cols = _WIDTH + (2 * (side + banner_art.GAP) if side else 0)
         canvas = self._canvases.get("logo")
         if canvas is None:
-            canvas = self._canvases["logo"] = kitty.Canvas()
+            canvas = self._canvases["logo"] = pixels.Canvas()
         self._logo.update(mode="pixels", cols=cols, banner_id=canvas.upload(png, cols, rows),
                           window=banner_art.fire_window(side, rows, cell_w, cell_h) if side else None,
                           fire_ids={})
@@ -335,13 +338,23 @@ class DashboardPane(LookupPane):
         cell_w, cell_h = logo["cell"]
         if logo["mode"] == "text":
             return text_banner(lines, side, palette, cell_w, cell_h, frame)
-        fire_id = self._fire_image(frame) if side else 0
+        # With Sixel the breath is laid over the banner image (_fire_tick),
+        # so the banner's cells are the whole image.
+        fire_id = self._fire_image(frame) if side and not self._sixel_logo() else 0
         return pixel_banner(logo["banner_id"], logo["cols"], logo["rows"], logo["window"], fire_id)
 
+    def _sixel_logo(self) -> bool:
+        """True when the banner on screen is a Sixel image."""
+        if self._logo.get("mode") != "pixels":
+            return False
+        from ..graphics import pixels
+
+        return pixels.protocol() == pixels.SIXEL
+
     def _fire_image(self, frame: int) -> int:
-        """The kitty image of the breath in `frame`, uploaded the first time
-        it is wanted (so a loop's work is spread over its first pass)."""
-        from ..graphics import kitty
+        """The image of the breath in `frame`, uploaded the first time it is
+        wanted (so a loop's work is spread over its first pass)."""
+        from ..graphics import pixels
 
         logo = self._logo
         ids = logo["fire_ids"]
@@ -353,7 +366,7 @@ class DashboardPane(LookupPane):
             except Exception:
                 return 0
             _, _, width, height = logo["window"]
-            ids[frame] = kitty.show(png, width, height)
+            ids[frame] = pixels.show(png, width, height)
         return ids[frame]
 
     def _retire_fire(self) -> None:
@@ -366,12 +379,12 @@ class DashboardPane(LookupPane):
     def _fire_tick(self) -> None:
         """The next frame of the breath, while the banner is on screen."""
         if self._fire_stale:
-            from ..graphics import kitty
+            from ..graphics import pixels
 
             now = time.monotonic()
             for when, ids in [item for item in self._fire_stale if now - item[0] > 0.3]:
                 for image_id in ids:
-                    kitty.delete(image_id)
+                    pixels.delete(image_id)
                 self._fire_stale.remove((when, ids))
         if not self._logo or not self._logo.get("side"):
             return
@@ -382,7 +395,26 @@ class DashboardPane(LookupPane):
         if not banner.is_on_screen:
             return
         self._fire_frame = (self._fire_frame + 1) % banner_art.FIRE_FRAMES
+        if self._sixel_logo():
+            if self._fire_frame % 2 == 0:
+                self._sixel_fire(self._fire_frame)
+            return
         banner.update(self._logo_frame(self._fire_frame), layout=False)
+
+    def _sixel_fire(self, frame: int) -> None:
+        """Lay the breath's `frame` over the Sixel banner where it was last
+        drawn; the overlay keeps it there when the banner is redrawn."""
+        from ..graphics import sixel
+
+        logo = self._logo
+        fire_id = self._fire_image(frame)
+        if not fire_id or not logo.get("window"):
+            return
+        col, top, _width, _height = logo["window"]
+        try:
+            sixel.draw_over(self.screen, logo["banner_id"], fire_id, col, top)
+        except Exception:
+            pass
 
     def _tagline(self) -> None:
         try:

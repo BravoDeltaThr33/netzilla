@@ -62,8 +62,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--graphics", choices=("auto", "pixel", "text"), type=str.lower,
-        help="draw graphs as pixels (kitty, Ghostty), as text, or decide "
-             "automatically (the default; also set on the SETTINGS tab)",
+        help="draw graphs as pixels (kitty, Ghostty, Windows Terminal, WezTerm), "
+             "as text, or decide automatically (the default; also set on the "
+             "SETTINGS tab)",
     )
     parser.add_argument(
         "--no-probe", action="store_true",
@@ -194,6 +195,9 @@ def _terminal_report(args) -> int:
         ("Truecolour", "yes" if info.truecolor else "no"),
         ("kitty graphics", "yes" if info.kitty_graphics else "no"),
         ("Unicode placeholders", "yes" if info.placeholders else "no"),
+        ("Sixel", "yes" if info.sixel else "no"),
+        ("Pixel graphs use", "Sixel" if info.image_protocol() == "sixel"
+         else "kitty graphics protocol"),
         ("Cell size", cell),
         ("Hyperlinks", "yes" if info.hyperlinks else "no"),
         ("Clipboard (OSC 52)", "yes" if info.clipboard else "no / unknown"),

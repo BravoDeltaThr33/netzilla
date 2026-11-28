@@ -403,7 +403,8 @@ class LookupPane(CollapsibleControls, Vertical):
 
     @property
     def pixel_graphics(self) -> bool:
-        """True when graphs on this tab are drawn as images (kitty, Ghostty)."""
+        """True when graphs on this tab are drawn as images (kitty, Ghostty,
+        or Sixel in Windows Terminal and WezTerm)."""
         return self._app_setting("graphics_mode", "text") == "pixel"
 
     def graph(self, key: str, graph, colour: str | None = None):
@@ -416,9 +417,9 @@ class LookupPane(CollapsibleControls, Vertical):
         if self.pixel_graphics:
             canvas = self._canvases.get(key)
             if canvas is None:
-                from ..graphics.kitty import Canvas
+                from ..graphics import pixels
 
-                canvas = self._canvases[key] = Canvas()
+                canvas = self._canvases[key] = pixels.Canvas()
         ctx = charts.Context(
             pixel=canvas is not None,
             palette=self.palette,

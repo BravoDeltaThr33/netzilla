@@ -1,5 +1,5 @@
 ===============================================================================
- Installing netzilla 4.6.0
+ Installing netzilla 4.7.0
 ===============================================================================
 
 netzilla is a terminal (text-based) app for network admins — Wi-Fi and LAN
@@ -37,7 +37,7 @@ Open a terminal (Ctrl+Alt+T) and run these one at a time.
 
  4. Unpack and install netzilla:
         cd ~/Downloads
-        tar -xzf netzilla-4.6.0-friend.tar.gz
+        tar -xzf netzilla-4.7.0-friend.tar.gz
         cd netzilla
         pipx install .
     Optional (adds the OOKLA TEST on the SPEED tab; the built-in speed test
@@ -69,7 +69,7 @@ Open Terminal (or iTerm2) and run these one at a time.
 
  3. Unpack and install netzilla:
         cd ~/Downloads
-        tar -xzf netzilla-4.6.0-friend.tar.gz
+        tar -xzf netzilla-4.7.0-friend.tar.gz
         cd netzilla
         pipx install .
     Optional (adds the OOKLA TEST on the SPEED tab):
@@ -102,7 +102,7 @@ run these one at a time.
 
  3. Unpack and install netzilla:
         cd ~/Downloads
-        tar -xzf netzilla-4.6.0-friend.tar.gz
+        tar -xzf netzilla-4.7.0-friend.tar.gz
         cd netzilla
         pipx install .
     (If `pipx` is not found, type `py -m pipx install .` instead.)
@@ -111,7 +111,12 @@ run these one at a time.
         netzilla
     Use Windows Terminal rather than the old console window, which draws
     netzilla badly. Nothing else needs installing: netzilla uses Windows'
-    own tools and brings its own WHOIS and DNS lookups.
+    own tools and brings its own WHOIS, DNS and trace lookups.
+    Windows Terminal 1.22 or newer draws netzilla's graphs as pictures. If
+    they come out as characters, update it:
+        winget upgrade Microsoft.WindowsTerminal
+    LAN -> ROGUE DHCP needs Windows Terminal opened as Administrator
+    (right-click it, "Run as administrator"); nothing else does.
     On Windows 11 24H2 or newer, WIFI -> SCAN stays empty until desktop
     apps may use your location: Settings -> Privacy & security ->
     Location, and turn on "Let desktop apps access your location".
@@ -125,7 +130,7 @@ run these one at a time.
 
  Same steps, but install with --force (your theme and settings are kept):
         cd ~/Downloads
-        tar -xzf netzilla-4.6.0-friend.tar.gz
+        tar -xzf netzilla-4.7.0-friend.tar.gz
         cd netzilla
         pipx install --force .
 
@@ -145,17 +150,17 @@ run these one at a time.
    BT TRACKERS checks for a tracker that keeps showing up near you. It only
    listens; it never pairs with anything. Click a device (or a network in
    LIVE AIR) to graph it; click it again to show only that one.
- * In kitty (0.28+) or Ghostty (1.0+), on Linux or macOS, the graphs are
-   drawn as real images; in any other terminal (Windows Terminal
-   included) they are drawn with characters. `netzilla --terminal` shows
-   what netzilla detected.
+ * In kitty (0.28+), Ghostty (1.0+), WezTerm or Windows Terminal (1.22+)
+   the graphs are drawn as real images; in any other terminal they are
+   drawn with characters. `netzilla --terminal` shows what netzilla
+   detected.
  * Hover over (or Tab to) any button and an instructions card appears —
    what to type, when you'd use it, and a safe public target to try.
  * On Linux, the LAN tab's ROGUE DHCP and SYSLOG CATCH bind privileged
    ports, so they need `sudo netzilla` to fully work. SYSLOG CATCH still
    works without sudo — it uses port 1514 instead of 514 automatically.
-   On macOS only ROGUE DHCP needs sudo; on Windows nothing needs
-   Administrator, and ROGUE DHCP can't run there at all.
+   On macOS only ROGUE DHCP needs sudo; on Windows it needs Windows
+   Terminal opened with "Run as administrator", and nothing else does.
  * A few local tools work differently on macOS and Windows; each tab's
    TOOL CHECK says what applies on yours, and README.txt section 3d lists
    it all.

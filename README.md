@@ -7,18 +7,45 @@ network admin actually reaches for — plus the local tools (`dig`, `whois`,
 
 Twenty-one tabs, seventeen dark colour themes, **free and open data sources
 only**, and zero setup to start using most of it. Runs on **Linux, macOS and
-Windows**. **Version 4.6.0.**
+Windows**. **Version 4.7.0.**
 
-- **Pixel graphs in kitty and Ghostty.** Live Wi-Fi signal, a channel
-  spectrum, interface rates and the speed test are drawn as real
-  anti-aliased images in terminals that can show them, and as text
-  everywhere else — netzilla asks the terminal what it is and decides for
-  itself.
+- **Pixel graphs in kitty, Ghostty, Windows Terminal and WezTerm.** Live
+  Wi-Fi signal, a channel spectrum, interface rates and the speed test are
+  drawn as real anti-aliased images in terminals that can show them, and as
+  text everywhere else — netzilla asks the terminal what it is and decides
+  for itself.
 - **Nothing paid.** Every source is free; most need no key at all.
 - **Every control checked.** Every button on every tab and every documented
   key, in both cases, is exercised by the test suite.
 
 ![LIVE AIR in kitty — every Wi-Fi network graphed live](docs/showcase/live-air.gif)
+
+## What's new in 4.7
+
+The three things Windows was missing, built in — nothing new to install:
+
+| | |
+|---|---|
+| **DIG +TRACE without `dig`** | On Windows, or anywhere without `dig`, DNS/WHOIS → DIG +TRACE walks the delegation itself: a root server first, then each level's servers, over plain DNS on UDP/53 (TCP when an answer is too big), asking each only what it holds — and prints every hop the way `dig +trace` does. Referrals without glue, old servers without EDNS and lame delegations are handled; a network that intercepts port 53 is named as the reason instead of yielding a path that isn't real. |
+| **ROGUE DHCP on Windows** | LAN → ROGUE DHCP sends its own DHCPDISCOVER and lists every server that answers. Windows' DHCP Client keeps UDP/68, so the offers are heard on a raw socket instead (Windows' own capture switch, no Npcap). Needs a terminal opened with *Run as administrator*, as it needs sudo elsewhere. |
+| **Pixel graphs in Windows Terminal and WezTerm** | Graphs, the DASH banner and the beast's breath are drawn as Sixel images in Windows Terminal 1.22+ and WezTerm — the same glow and scanlines as in kitty and Ghostty, switched on by themselves. netzilla puts each picture back after every screen update, cropped to what's visible and around anything on top of it. Other terminals that report Sixel (xterm in VT340 mode, foot…) get them by choosing Pixel on SETTINGS. |
+
+### What works where
+
+Every lookup over the internet works the same on all three. The local tools
+differ:
+
+| | macOS | Windows |
+|---|---|---|
+| **DNS/WHOIS** | Everything, with the `dig` and `whois` macOS ships | ALL RECORDS and REVERSE over DNS-over-HTTPS (no `dig`), so the DNS-server box is ignored; DIG +TRACE walks the delegation itself; built-in WHOIS client |
+| **SSL/TLS** | LibreSSL's full handshake report | Python's own TLS handshake unless you install OpenSSL |
+| **LAN** | ROGUE DHCP needs sudo; SNMP tools built in | ROGUE DHCP needs *Run as administrator* (offers heard on a raw socket); no SNMP POLL (no current Net-SNMP for Windows) |
+| **INT** | LIVE RATES built in; iftop/vnstat/bmon from Homebrew | LIVE RATES; no iftop/vnstat/bmon |
+| **WIFI** | No BSSIDs or AP makers on 14.4+; a scan takes a few seconds; no retries or missed beacons | Everything but retries and missed beacons; Windows 11 24H2+ needs location access allowed |
+| **CAPTURE** | Wireshark with ChmodBPF, or a sudo session | Wireshark with Npcap; no tcpdump |
+| **FLOW** | Process names for your own programs without sudo | Everything |
+| **DIAG** | `mtr` needs root (AUTHENTICATE or sudo) | `tracert` and `pathping` |
+| **Pixel graphs** | kitty, Ghostty and WezTerm | Windows Terminal 1.22+ and WezTerm (Sixel); text graphs in older Windows Terminals |
 
 ## What's new in 4.6
 
@@ -30,23 +57,6 @@ and keys on all three systems.
 | **Windows** | Interfaces, LIVE RATES and FLOW's connections (with the program behind each) from Windows' own IP Helper API; the WIFI tab from its Native Wi-Fi API — every access point with exact dBm, live signal graphs, channels and link health; BLUETOOTH through Windows' Bluetooth stack. No administrator rights needed. `tracert` and `pathping` stand in for `traceroute` and `mtr`; with no `dig` or `whois`, DNS records come over DNS-over-HTTPS and WHOIS from netzilla's own client (IANA → registry → registrar). Capture uses Wireshark with Npcap. |
 | **macOS** | The WIFI tab (`system_profiler`, or `airport` on 14.3 and older), LIVE RATES, DASH's NETWORK PULSE, WIFI → TRAFFIC and FLOW (`netstat -ib`, `netstat`, `lsof`) now work on macOS. iftop and capture need no sudo once Wireshark's ChmodBPF is installed; `mtr` runs through the sudo session AUTHENTICATE opens. DASH shows real uptime and memory. |
 | **Everywhere** | A missing tool names the command that installs it on your system (`apt`, `brew` or `winget`), or says what netzilla does instead where the tool doesn't exist. Every tab's TOOL CHECK and the instruction cards read right for the system you're on. |
-
-### What works where
-
-Every lookup over the internet works the same on all three. The local tools
-differ:
-
-| | macOS | Windows |
-|---|---|---|
-| **DNS/WHOIS** | Everything, with the `dig` and `whois` macOS ships | ALL RECORDS and REVERSE over DNS-over-HTTPS (no `dig`), so the DNS-server box is ignored; no DIG +TRACE; built-in WHOIS client |
-| **SSL/TLS** | LibreSSL's full handshake report | Python's own TLS handshake unless you install OpenSSL |
-| **LAN** | ROGUE DHCP needs sudo; SNMP tools built in | No ROGUE DHCP (Windows' DHCP Client holds UDP/68); no SNMP POLL (no current Net-SNMP for Windows) |
-| **INT** | LIVE RATES built in; iftop/vnstat/bmon from Homebrew | LIVE RATES; no iftop/vnstat/bmon |
-| **WIFI** | No BSSIDs or AP makers on 14.4+; a scan takes a few seconds; no retries or missed beacons | Everything but retries and missed beacons; Windows 11 24H2+ needs location access allowed |
-| **CAPTURE** | Wireshark with ChmodBPF, or a sudo session | Wireshark with Npcap; no tcpdump |
-| **FLOW** | Process names for your own programs without sudo | Everything |
-| **DIAG** | `mtr` needs root (AUTHENTICATE or sudo) | `tracert` and `pathping` |
-| **Pixel graphs** | kitty and Ghostty | Text graphs (Windows Terminal) |
 
 ## What's new in 4.5
 
@@ -167,10 +177,13 @@ third of a second) and draws graphs in whichever form will work:
 The image sits exactly where the text graph would: labels, axes and channel
 numbers stay as text, so nothing moves when you switch. Pixels are used only
 where they are known to work — kitty 0.28+, Ghostty 1.0+, or any terminal
-that answers the kitty feature query with Unicode-placeholder support — and
+that answers the kitty feature query with Unicode-placeholder support, and
 inside tmux when `allow-passthrough` and 24-bit colour are on (netzilla asks
-tmux which terminal you're attached from). WezTerm, Konsole, iTerm2, GNOME
-Terminal and the rest get text graphs.
+tmux which terminal you're attached from) — and, through Sixel, Windows
+Terminal 1.22+ and WezTerm, whose pictures netzilla redraws after every
+screen update. Other terminals that report Sixel (xterm in VT340 mode,
+foot…) can have them by choosing Pixel; Konsole, GNOME Terminal and the rest
+get text graphs.
 
 ```console
 $ netzilla --terminal
@@ -179,6 +192,8 @@ Identified by            XTVERSION reply (asked the terminal)
 Truecolour               yes
 kitty graphics           yes
 Unicode placeholders     yes
+Sixel                    no
+Pixel graphs use         kitty graphics protocol
 Cell size                10 x 21 px
 Hyperlinks               yes
 Clipboard (OSC 52)       yes
@@ -353,7 +368,7 @@ Then, on any of them:
 
 ```bash
 cd ~/Downloads
-tar -xzf netzilla-4.6.0.tar.gz
+tar -xzf netzilla-4.7.0.tar.gz
 cd netzilla
 pipx install .
 netzilla --terminal    # optional: what netzilla sees in this terminal
@@ -369,8 +384,9 @@ Your theme and settings are kept.
 For pixel graphs, run netzilla in [kitty](https://sw.kovidgoyal.net/kitty/)
 0.28+ or [Ghostty](https://ghostty.org/) 1.0+ (the kitty packaged for Ubuntu
 22.04 / Mint 21 is too old — use kitty's own installer; README.txt §3 has the
-commands for both). In tmux, add `set -g allow-passthrough on` to
-`~/.tmux.conf`.
+commands for both), in [WezTerm](https://wezterm.org/), or on Windows in
+Windows Terminal 1.22+. In tmux, add `set -g allow-passthrough on` to
+`~/.tmux.conf` (kitty and Ghostty).
 
 `netzilla` opens straight to the DASH tab. Every tab tells you exactly which
 package to install if a tool it wraps is missing — check `DIAG → TOOL CHECK`
@@ -393,9 +409,11 @@ brew install --cask wireshark-app    # log out & back in afterwards
 winget install WiresharkFoundation.Wireshark
 ```
 
-On Windows, run netzilla in Windows Terminal, and on Windows 11 24H2 or later
-allow desktop apps your location (Settings → Privacy & security → Location),
-or Windows hides the Wi-Fi networks from WIFI → SCAN. README.txt §3 has every
+On Windows, run netzilla in Windows Terminal (1.22 or later draws the pixel
+graphs: `winget upgrade Microsoft.WindowsTerminal`), and on Windows 11 24H2 or
+later allow desktop apps your location (Settings → Privacy & security →
+Location), or Windows hides the Wi-Fi networks from WIFI → SCAN. LAN → ROGUE
+DHCP needs Windows Terminal opened with *Run as administrator*. README.txt §3 has every
 step for each system and what differs on each.
 
 ## API keys
@@ -433,11 +451,11 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-927 tests. Everything is exercised with recorded or mocked responses and a
+982 tests. Everything is exercised with recorded or mocked responses and a
 fake terminal; macOS and Windows are faked with their tools' recorded output
-and the Windows API structures built byte by byte. No network calls, no root,
-no packets sent to the devices on your LAN, and no real key is ever used or
-printed.
+and the Windows API structures built byte by byte, and DNS servers, sockets and
+the Windows console are fakes. No network calls, no root, no packets sent to
+the devices on your LAN, and no real key is ever used or printed.
 
 ## Scope, on purpose
 

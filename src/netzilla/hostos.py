@@ -180,7 +180,8 @@ UNAVAILABLE: dict[str, str] = {
     "traceroute": "Windows has tracert instead, and netzilla uses it",
     "tracepath": "traceroute does the same job",
     "mtr": "netzilla runs Windows' own pathping instead",
-    "dig": "ALL RECORDS and REVERSE ask Cloudflare over DNS-over-HTTPS instead",
+    "dig": "ALL RECORDS and REVERSE ask Cloudflare over DNS-over-HTTPS, and "
+           "DIG +TRACE walks the delegation itself",
     "whois": "netzilla's own WHOIS client is used instead",
     "tcpdump": "tshark (with Wireshark) does the same job",
     "arping": "the LAN tab falls back to ping and the ARP table",

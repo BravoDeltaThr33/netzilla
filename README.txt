@@ -1,8 +1,9 @@
 ===============================================================================
- netzilla 4.6.0
+ netzilla 4.7.0
  A retro terminal toolkit for network administrators
  Runs on Linux, macOS and Windows
- Free and open data sources only · pixel graphs in kitty and Ghostty
+ Free and open data sources only · pixel graphs in kitty, Ghostty,
+ Windows Terminal and WezTerm
 ===============================================================================
 
  ███╗   ██╗███████╗████████╗███████╗██╗██╗     ██╗      █████╗
@@ -30,6 +31,45 @@ openssl, ping, traceroute, mtr) that no API should be replacing.
 -------------------------------------------------------------------------------
  1. WHAT'S NEW
 -------------------------------------------------------------------------------
+
+ 4.7.0 — what Windows was missing, built in.
+
+   The three things netzilla could not do on Windows in 4.6 now work there,
+   with nothing new to install.
+
+   DIG +TRACE without dig
+     DNS/WHOIS > DIG +TRACE walks the delegation itself wherever there is
+     no dig (Windows, or a Linux box without dnsutils). It asks a root
+     server for the list of root servers, then asks each level's servers in
+     turn about the name, over plain DNS on UDP port 53 (TCP when an answer
+     is too big), asking every server only what it holds itself — and
+     prints each hop the way dig +trace does. It follows referrals that
+     come without addresses, asks old servers again without EDNS, and stops
+     with the reason at a lame delegation. A network that answers port 53
+     itself, or lets DNS reach only its own resolver, is named as the
+     reason the walk can't be done from there, instead of printing a path
+     that isn't real.
+   ROGUE DHCP on Windows
+     LAN > ROGUE DHCP sends its own DHCPDISCOVER and lists every server
+     that answers, as on Linux and macOS. Windows' DHCP Client service keeps
+     UDP/68, where offers arrive, so netzilla hears them on a raw socket on
+     the default route's network instead (Windows' own capture switch, no
+     Npcap). That needs a terminal opened with "Run as administrator", just
+     as it needs sudo elsewhere, and the tab says so when it isn't.
+   Pixel graphs in Windows Terminal and WezTerm
+     Windows Terminal 1.22 and later and WezTerm draw Sixel images, so there
+     netzilla draws its graphs, the DASH banner and the beast's breath as
+     Sixel — the same pictures, glow and scanlines as in kitty and Ghostty,
+     switched on by themselves. A Sixel image doesn't travel with the text
+     the way kitty's placeholders do, so netzilla puts each picture back
+     straight after every screen update: where its cells are now, cropped
+     to what is visible, and around anything on top of it, such as a
+     notification. An older Windows Terminal is told to update. Any other
+     terminal that reports Sixel (xterm in VT340 mode, foot and others) can
+     have pixel graphs by choosing Pixel on SETTINGS, and netzilla
+     --terminal shows whether Sixel is there and which kind of image is
+     used. 982 tests (55 new).
+
 
  4.6.0 — netzilla runs on Windows and macOS too.
 
@@ -1276,9 +1316,10 @@ Twenty-one tabs, switched with the mouse or the left/right arrow keys:
 Every data source is free or open: no tab needs a paid plan, and most need
 no key at all (section 6 lists them).
 
-Graphs are drawn in pixels in kitty and Ghostty, and with text everywhere
-else — netzilla works out which terminal it is in by itself. Run
-`netzilla --terminal` to see what it decided.
+Graphs are drawn in pixels in kitty, Ghostty, Windows Terminal (1.22 and
+later) and WezTerm, and with text everywhere else — netzilla works out which
+terminal it is in by itself. Run `netzilla --terminal` to see what it
+decided.
 
 Screenshots of most of these, in pixel and text form, are in docs/showcase/
 inside this folder (open live-air.gif to see LIVE AIR moving).
@@ -1392,7 +1433,7 @@ a terminal (Ctrl+Alt+T opens one on both).
  STEP 4 — Unpack and install netzilla
  ------------------------------------
      cd ~/Downloads
-     tar -xzf netzilla-4.6.0.tar.gz
+     tar -xzf netzilla-4.7.0.tar.gz
      cd netzilla
      pipx install .
 
@@ -1473,7 +1514,7 @@ Apple Silicon and Intel Macs. Commands go in Terminal.app or iTerm2.
  STEP 3 — Unpack and install netzilla
  -------------------------------------
      cd ~/Downloads
-     tar -xzf netzilla-4.6.0.tar.gz
+     tar -xzf netzilla-4.7.0.tar.gz
      cd netzilla
      pipx install .
 
@@ -1547,7 +1588,7 @@ right-click Start and choose Terminal.
  STEP 3 — Unpack and install netzilla
  ------------------------------------
      cd ~/Downloads
-     tar -xzf netzilla-4.6.0.tar.gz
+     tar -xzf netzilla-4.7.0.tar.gz
      cd netzilla
      pipx install .
 
@@ -1565,7 +1606,12 @@ right-click Start and choose Terminal.
 
      winget install Microsoft.WindowsTerminal
 
- Graphs are drawn with text in Windows Terminal.
+ Windows Terminal 1.22 and later draws the graphs as pictures (Sixel);
+ an older one draws them with text. To update it:
+
+     winget upgrade Microsoft.WindowsTerminal
+
+ (or from the Microsoft Store). netzilla --terminal says which you have.
 
  Nothing else is needed: netzilla uses Windows' own ping, tracert,
  pathping, arp and netsh, reads the network straight from Windows, and
@@ -1600,9 +1646,13 @@ right-click Start and choose Terminal.
    * The first time SYSLOG CATCH listens, Windows Defender Firewall asks
      whether Python may communicate on networks: allow it on private
      networks, or other devices' messages never arrive.
-   * Windows has no sudo, and nothing in netzilla needs Administrator
-     there — unless Npcap was installed for Administrators only; then
-     start Windows Terminal with "Run as administrator" to capture.
+   * Windows has no sudo. Only LAN -> ROGUE DHCP needs Administrator:
+     it hears DHCP offers on a raw socket, which Windows keeps for
+     Administrators, so start Windows Terminal with "Run as administrator"
+     (right-click it) for that one. Capture needs it too if Npcap was
+     installed for Administrators only.
+   * If Windows Defender Firewall asks about Python when ROGUE DHCP runs,
+     allow it on private networks, or the offers never reach netzilla.
 
 
 -------------------------------- 3d. WHAT WORKS WHERE --------------------------------
@@ -1616,9 +1666,10 @@ right-click Start and choose Terminal.
    macOS     everything, with the dig and whois macOS ships.
    Windows   ALL RECORDS and REVERSE ask Cloudflare over DNS-over-HTTPS
              (Windows has no dig), so the DNS server box is ignored and
-             internal zones aren't visible. DIG +TRACE is Linux and macOS
-             only. WHOIS uses netzilla's own client and needs outbound TCP
-             port 43.
+             internal zones aren't visible. DIG +TRACE walks the
+             delegation itself and needs outbound UDP and TCP port 53 to
+             the internet's DNS servers. WHOIS uses netzilla's own client
+             and needs outbound TCP port 43.
 
  SSL/TLS
    macOS     OPENSSL HANDSHAKE shows LibreSSL's full report.
@@ -1629,10 +1680,11 @@ right-click Start and choose Terminal.
  LAN
    macOS     ROGUE DHCP needs sudo. SNMP POLL uses the tools macOS ships.
              SYSLOG CATCH listens on 514 without sudo.
-   Windows   no ROGUE DHCP: Windows' DHCP Client service holds UDP/68. No
-             SNMP POLL: Net-SNMP has no current Windows release. SWEEP,
-             IDENTIFY, DUP-IP WATCH and SYSLOG CATCH work, with no
-             administrator rights.
+   Windows   ROGUE DHCP needs a terminal opened with "Run as
+             administrator": Windows' DHCP Client service holds UDP/68, so
+             the offers are heard on a raw socket. No SNMP POLL: Net-SNMP
+             has no current Windows release. SWEEP, IDENTIFY, DUP-IP WATCH
+             and SYSLOG CATCH work, with no administrator rights.
 
  INT
    macOS     LIVE RATES works with nothing installed; iftop, vnstat and
@@ -1671,16 +1723,17 @@ right-click Start and choose Terminal.
    Windows   TRACEROUTE +ASN runs tracert and MTR REPORT runs pathping,
              both slower than their Linux cousins (a minute or two).
 
- Pixel graphs need kitty or Ghostty, which run on Linux and macOS. On
- Windows the graphs are drawn with text.
+ Pixel graphs: kitty and Ghostty (Linux and macOS) draw them with the
+ kitty graphics protocol; Windows Terminal 1.22 and later (Windows) and
+ WezTerm (all three) with Sixel. Everywhere else the graphs are text.
 
 
 -------------------------------- 3e. ALL SYSTEMS --------------------------------
 
- UPGRADING FROM AN EARLIER VERSION (any 1.x, 2.x, 3.x or 4.x -> 4.6.0)
+ UPGRADING FROM AN EARLIER VERSION (any 1.x, 2.x, 3.x or 4.x -> 4.7.0)
  ----------------------------------------------------------------------
      cd ~/Downloads
-     tar -xzf netzilla-4.6.0.tar.gz
+     tar -xzf netzilla-4.7.0.tar.gz
      cd netzilla
      pipx install --force .
      pipx inject netzilla speedtest-cli      # optional; --force wipes it
@@ -1746,8 +1799,9 @@ right-click Start and choose Terminal.
  OPTIONAL — a terminal that draws the pixel graphs
  -------------------------------------------------
  netzilla runs in any terminal. In kitty 0.28+ or Ghostty 1.0+ its graphs
- are drawn as images; everywhere else they are drawn with text. Nothing to
- configure either way — netzilla asks the terminal at start-up.
+ are drawn as images (and in WezTerm, and Windows Terminal 1.22+ on
+ Windows); everywhere else they are drawn with text. Nothing to configure
+ either way — netzilla asks the terminal at start-up.
 
    kitty, newest release (any Linux, installs into your home folder; these
    are the commands from kitty's own install page):
@@ -2067,8 +2121,9 @@ right-click Start and choose Terminal.
      themes.py         the seventeen palettes
      validators.py     local input validation (runs before any network call)
      termcaps.py       which terminal is this? XTVERSION, kitty graphics and
-                       feature queries, cell size, tmux/SSH, environment
-                       fallbacks; decides pixel or text graphs
+                       feature queries, Sixel (DA1), cell size, tmux/SSH,
+                       environment fallbacks — asked through the console
+                       API on Windows; decides pixel or text graphs
      hostos.py         which system this is (Linux, macOS, Windows) and all
                        that differs by it: where settings live, where a tool
                        is installed off PATH, the apt/brew/winget command
@@ -2076,7 +2131,10 @@ right-click Start and choose Terminal.
      graphics/         kitty.py (the kitty graphics protocol with Unicode
                        placeholders, image upload and freeing), plot.py
                        (the pixel drawings, with Pillow), charts.py (each
-                       graph once, rendered as pixels or text)
+                       graph once, rendered as pixels or text); 4.7 adds
+                       sixel.py (the Sixel encoder, marker cells and the
+                       overlay that redraws pictures after every frame) and
+                       pixels.py (which of the two this run uses)
      clipboard.py      F4: desktop clipboard tool, OSC 52, or a file
      notify.py         desktop notifications through the terminal
      netzilla.tcss     Textual CSS
@@ -2104,7 +2162,8 @@ right-click Start and choose Terminal.
                        API: adapters, counters, connections and their
                        programs) and wlanapi (Windows' Native Wi-Fi API:
                        scans, signal and the joined network), both through
-                       ctypes
+                       ctypes; 4.7 adds dnstrace (DIG +TRACE without dig:
+                       DNS wire format and the walk from the root servers)
      screens/          one module per tab; all inherit screens/base.py. 2.0 adds
                        lan, config_review and creds; 4.3 adds picking (pick
                        a row of a live list, and show only it)
@@ -2161,6 +2220,12 @@ right-click Start and choose Terminal.
                        system_profiler and airport output, WHOIS and TLS
                        without the programs, and every tab's TOOL CHECK
                        and help cards run as each system
+     test_v47.py       DIG +TRACE without dig against fake DNS servers
+                       (referrals, glue, TCP, EDNS, NXDOMAIN, lame and
+                       intercepted networks), ROGUE DHCP on Windows against
+                       fake sockets, the Sixel encoder and overlay
+                       (scrolling, things on top, dialogs, the bottom row),
+                       DASH in Sixel, and the Sixel terminal detection
      conftest.py       stubs out every real LAN probe, so running the tests
                        never sends a packet to the devices on your network
 
@@ -2175,13 +2240,14 @@ right-click Start and choose Terminal.
      pip install -e ".[dev]"
      pytest -q
 
- 927 checks, about five minutes, run on Linux: macOS and Windows are tested
+ 982 checks, about five minutes, run on Linux: macOS and Windows are tested
  by faking them, with their tools' recorded output. No network calls, no
  root, and no real API key is used or printed — HTTP is served by httpx's
  MockTransport using the example responses from each vendor's
  documentation, the LAN/DHCP/SNMP/NTP protocol logic is exercised as pure
- functions, and the terminal is a fake that answers netzilla's start-up
- questions the way kitty, Ghostty, tmux and others do.
+ functions, DNS servers, sockets and the Windows console are fakes, and the
+ terminal is a fake that answers netzilla's start-up questions the way
+ kitty, Ghostty, Windows Terminal, tmux and others do.
 
 
 -------------------------------------------------------------------------------
@@ -2224,9 +2290,13 @@ right-click Start and choose Terminal.
      AUTHENTICATE on the CAPTURE tab once and netzilla runs mtr through
      that sudo session, or start netzilla with  sudo netzilla
 
- Graphs are drawn with text in kitty or Ghostty
+ Graphs are drawn with text in kitty, Ghostty, Windows Terminal or WezTerm
      Run `netzilla --terminal` in that window: the last line, "Why", names
      the reason. The usual ones:
+       * Windows Terminal older than 1.22, which draws no Sixel images —
+         winget upgrade Microsoft.WindowsTerminal, or the Microsoft Store.
+       * WezTerm that didn't report its cell size — choose Pixel on
+         SETTINGS to try the images anyway.
        * kitty older than 0.28 (Ubuntu 22.04 / Mint 21 ship 0.21) — install
          the current kitty, section 3 "a terminal that draws the pixel
          graphs".
@@ -2244,7 +2314,8 @@ right-click Start and choose Terminal.
          netzilla's environment: pipx runpip netzilla install pillow
 
  Graphs show as empty boxes or stray characters
-     The terminal can't draw kitty images but GRAPHICS was set to Pixel.
+     The terminal can't draw kitty or Sixel images but GRAPHICS was set to
+     Pixel.
      Set it back to Auto on SETTINGS > DISPLAY (or Ctrl+P, "Graphics:
      auto") and netzilla only uses pixels where they work.
 
@@ -2428,12 +2499,23 @@ right-click Start and choose Terminal.
      output is shown instead of being silently dropped. The capture itself is
      fine, and SAVE PCAP plus Wireshark will always work.
 
- LAN: ROGUE DHCP says "Needs root"
+ LAN: ROGUE DHCP says "Needs root" (or "Needs Administrator")
      DHCP uses privileged/raw ports (UDP 67/68). Run netzilla with sudo:
          sudo netzilla
      Your config and keys are read from your own ~/.config/netzilla either way.
-     On Windows it can't run at all: Windows' DHCP Client service keeps
-     UDP/68 for itself. Run it from Linux or macOS on the same network.
+     On Windows, close netzilla, right-click Windows Terminal, choose "Run
+     as administrator" and run it again there: Windows' DHCP Client service
+     keeps UDP/68, so the offers are heard on a raw socket, which Windows
+     lets only an Administrator open. If it then hears nothing on a network
+     that has a DHCP server, allow Python through Windows Defender Firewall
+     on private networks; a VPN that owns the default route also takes the
+     DISCOVER away from the LAN.
+
+ Pixel graphs in Windows Terminal show as plain boxes or as text
+     Windows Terminal draws Sixel images from version 1.22. Update it
+     (winget upgrade Microsoft.WindowsTerminal, or the Microsoft Store);
+     netzilla --terminal shows "Sixel  yes" once it can. Inside tmux or
+     another multiplexer netzilla keeps text graphs.
 
  LAN: SYSLOG CATCH receives nothing
      On Linux without root it listens on udp/1514, not 514; the result says

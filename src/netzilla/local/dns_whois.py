@@ -6,9 +6,10 @@ public API can see. netzilla wraps them rather than proxying basic lookups
 through a third party.
 
 Windows has neither. Without dig, the DNS screen asks Cloudflare over
-DNS-over-HTTPS (clients/doh.py); without whois, whois() speaks the WHOIS
-protocol itself (RFC 3912: one line out on TCP port 43, the answer back),
-starting at IANA and following each referral, as the whois program does.
+DNS-over-HTTPS (clients/doh.py) and trace() walks the delegation itself
+(dnstrace.py); without whois, whois() speaks the WHOIS protocol itself
+(RFC 3912: one line out on TCP port 43, the answer back), starting at IANA
+and following each referral, as the whois program does.
 """
 
 from __future__ import annotations
@@ -59,9 +60,34 @@ async def reverse(ip: str, server: str = "") -> CommandResult:
     return await run(argv)
 
 
-async def trace(domain: str) -> CommandResult:
-    """Full delegation path from the root servers down."""
+async def trace(domain: str, progress=None) -> CommandResult:
+    """Full delegation path from the root servers down: dig +trace, or
+    netzilla's own walk where there is no dig (Windows)."""
+    if not have("dig"):
+        return await trace_direct(domain, progress=progress)
     return await run(["dig", "+trace", "+nodnssec", domain], timeout=45.0)
+
+
+TRACE_BUILT_IN = "built-in trace"
+
+
+async def trace_direct(domain: str, progress=None, tracer=None) -> CommandResult:
+    """dig +trace without dig: one level at a time, each in a worker thread,
+    `progress(text)` told which level is being asked."""
+    from . import dnstrace
+
+    tracer = tracer or dnstrace.Tracer(domain)
+    while not tracer.done:
+        if progress is not None:
+            where = "the root servers" if not tracer.primed or tracer.zone == "." \
+                else f"the {tracer.zone.rstrip('.')} servers"
+            try:
+                progress(f"Asking {where} about {tracer.qname.rstrip('.')}…")
+            except Exception:
+                pass
+        await asyncio.to_thread(tracer.step)
+    return CommandResult(tracer.ok, tracer.text(), tracer.error,
+                         f"{TRACE_BUILT_IN} (dig is not installed)")
 
 
 async def whois(target: str, timeout: float = 25.0) -> CommandResult:

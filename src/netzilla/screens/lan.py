@@ -11,10 +11,12 @@ Everything here is local L2/L3 protocol work with no third-party API:
   SYSLOG       stand up a UDP listener (514, or any port typed in the target
                field) and collect device logs, with a live message count
 
-DHCP detection needs root (raw sockets). The syslog listener needs root only
-for ports below 1024: without it, the default 514 falls back to 1514 on its
-own instead of stopping with an error. Windows and macOS let any user listen
-on 514; on Windows the DHCP Client service keeps UDP/68 for itself.
+DHCP detection needs root (raw sockets) — on Windows an Administrator
+terminal, as the offers are heard on a raw socket there (the DHCP Client
+service keeps UDP/68 for itself). The syslog listener needs root only for
+ports below 1024: without it, the default 514 falls back to 1514 on its own
+instead of stopping with an error. Windows and macOS let any user listen on
+514.
 """
 
 from __future__ import annotations
@@ -37,7 +39,8 @@ class LANPane(LookupPane):
         "finds every device and names it: vendor, hostname and what it looks "
         "like (leave the box blank to sweep this machine's own subnet). "
         "IDENTIFY profiles one device. Also: rogue DHCP, duplicate IPs, SNMP, "
-        + ("syslog. SYSLOG listens on udp/514 (no administrator rights needed)."
+        + ("syslog. ROGUE DHCP needs an Administrator terminal; SYSLOG listens "
+           "on udp/514 with no administrator rights needed."
            if hostos.is_windows() else
            "syslog. ROGUE DHCP needs root ('sudo netzilla'); SYSLOG listens on "
            "udp/514 with no root needed." if hostos.is_macos() else
@@ -256,7 +259,7 @@ class LANPane(LookupPane):
             offers = await dhcp.detect(listen_seconds=listen)
         except PermissionError as exc:
             await self.finish()
-            await self.push_error("UDP/68 is taken" if hostos.is_windows() else "Needs root",
+            await self.push_error("Needs Administrator" if hostos.is_windows() else "Needs root",
                                   str(exc))
             return
         except OSError as exc:
@@ -271,6 +274,7 @@ class LANPane(LookupPane):
         await self.finish()
         text, state = dhcp.verdict(offers)
         await self.push(verdict_line(self.palette, "DHCP", text, state))
+        heard = next((o.get("heard") for o in offers if o.get("heard")), "")
         if offers:
             rows = []
             for offer, row in zip(offers, dhcp.rows(offers)):
@@ -287,8 +291,18 @@ class LANPane(LookupPane):
                     ["Server", "MAC", "Vendor", "Hostname", "Device",
                      "Offered IP", "Mask", "Routers", "DNS", "Lease"],
                     rows,
-                    subtitle=f"{len(offers)} distinct server(s)",
+                    subtitle=f"{len(offers)} distinct server(s)"
+                    + (f" · heard on a {heard}" if heard.startswith("raw") else ""),
                 )
+            )
+        if not offers and hostos.is_windows() and dhcp.LAST_HEARD.startswith("raw"):
+            await self.push_warning(
+                "Nothing heard",
+                f"netzilla listened on a {dhcp.LAST_HEARD}. If this network does "
+                "have a DHCP server, Windows Defender Firewall may be keeping its "
+                "offers from Python: allow Python on private networks when Windows "
+                "asks, then run ROGUE DHCP again. A VPN that owns the default route "
+                "also takes the DISCOVER away from the LAN.",
             )
         if len(offers) > 1:
             await self.push_warning(

@@ -19,8 +19,9 @@ class DNSWhoisPane(LookupPane):
     DESCRIPTION = (
         "dig and whois run locally — no key, no rate limit, and they can see "
         "internal zones no public API can (without dig, ALL RECORDS and REVERSE "
-        "fall back to DNS-over-HTTPS). TYPOSQUAT SEARCH generates lookalike "
-        "domains locally and checks which exist — no key needed."
+        "fall back to DNS-over-HTTPS and DIG +TRACE walks the tree itself). "
+        "TYPOSQUAT SEARCH generates lookalike domains locally and checks which "
+        "exist — no key needed."
     )
     FIELDS = (
         Field("target", "Domain or IP", "example.com"),
@@ -107,19 +108,23 @@ class DNSWhoisPane(LookupPane):
         if action == "trace":
             domain = valid_domain(self.field("target"))
             await self.begin(f"Tracing delegation for {domain} from the root…")
-            result = await dns_whois.trace(domain)
+            result = await dns_whois.trace(domain, progress=self.progress)
             await self.finish()
             if result.missing_tool:
                 await self._missing("dig", "dnsutils")
                 return
+            built_in = result.command.startswith(dns_whois.TRACE_BUILT_IN)
             await self.push(
                 text_panel(
                     self.palette,
                     f"Delegation path — {domain}",
                     result.output or result.error or "No output.",
-                    subtitle="dig +trace",
+                    subtitle="built-in trace · dig is not installed" if built_in
+                    else "dig +trace",
                 )
             )
+            if built_in and not result.ok and result.error:
+                await self.push_warning("The trace stopped", result.error)
 
     async def _records_over_https(self, target: str, server: str) -> None:
         """ALL RECORDS without dig: every type asked of Cloudflare over HTTPS."""

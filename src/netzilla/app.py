@@ -169,10 +169,10 @@ class NetzillaApp(App):
             )
 
     async def on_unmount(self) -> None:
-        from .graphics import kitty
+        from .graphics import pixels
 
-        kitty.delete_all()
-        kitty.set_writer(None)
+        pixels.delete_all()
+        pixels.set_writer(None)
         await self.services.aclose()
 
     async def on_tabbed_content_tab_activated(
@@ -212,6 +212,18 @@ class NetzillaApp(App):
     def cell_px(self) -> tuple[int, int]:
         return self._cell_px or self.terminal.cell_px or (10, 20)
 
+    @property
+    def image_protocol(self) -> str:
+        """'kitty' or 'sixel' — how pixel graphs reach this terminal."""
+        return self.terminal.image_protocol()
+
+    def _measure_cells(self) -> tuple[int, int] | None:
+        """The cell size images are drawn at: Windows Terminal's Sixel cell
+        is always 10 x 20; elsewhere what the terminal reports."""
+        if self.image_protocol == "sixel" and self.terminal.sixel_cell():
+            return self.terminal.sixel_cell()
+        return termcaps.cell_size_from_ioctl() or self.terminal.cell_px
+
     def _pixel_blocker(self) -> str:
         """Why pixel graphs can't be drawn in this run even if the terminal
         could show them — '' when nothing stands in the way."""
@@ -226,27 +238,42 @@ class NetzillaApp(App):
             return "NO_COLOR is set, and pixel graphs need colour."
         # The image id travels in each placeholder's 24-bit colour, so
         # Textual must be writing truecolour or every id comes out wrong.
-        if getattr(self.console, "color_system", "truecolor") != "truecolor":
+        # (Sixel images carry their own colours.)
+        if (getattr(self, "image_protocol", "kitty") == "kitty"
+                and getattr(self.console, "color_system", "truecolor") != "truecolor"):
             return ("Textual is drawing in 256 colours here — set COLORTERM=truecolor "
                     "if this terminal has 24-bit colour.")
         return ""
 
     def _start_graphics(self) -> None:
         """Point the image writer at the terminal when pixels are wanted."""
-        from .graphics import kitty
+        from .graphics import pixels, sixel
 
         wanted = self.terminal.graphics_mode(self.graphics_setting) == "pixel"
         usable = wanted and not self._pixel_blocker()
         if usable:
             driver = self._driver
-            kitty.set_writer(driver.write, tmux=self.terminal.passthrough)
-            self._cell_px = termcaps.cell_size_from_ioctl() or self.terminal.cell_px
+            pixels.use(self.image_protocol)
+            pixels.set_writer(driver.write, tmux=self.terminal.passthrough)
+            self._cell_px = self._measure_cells()
+            sixel.OVERLAY.reset()
         elif not self._pixels_ready:
-            kitty.set_writer(None)
+            pixels.set_writer(None)
         # Leaving pixel mode keeps the writer: images already on screen stay
         # until their panels are replaced, and are still deleted then — and
         # at exit — rather than left in the terminal's memory.
         self._pixels_ready = usable
+
+    def _display(self, screen, renderable, *args, **kwargs):
+        """Every frame Textual writes. With Sixel graphs, the images under
+        any cells this frame overwrites are drawn again straight after it,
+        in the same write (graphics/sixel.py)."""
+        if self._pixels_ready and renderable is not None:
+            from .graphics import pixels
+
+            if pixels.protocol() == pixels.SIXEL:
+                renderable = _with_sixels(screen, renderable)
+        return super()._display(screen, renderable, *args, **kwargs)
 
     def graphics_why(self) -> str:
         """One sentence for DASH and SETTINGS: why graphs are drawn the way
@@ -255,6 +282,12 @@ class NetzillaApp(App):
         if setting == "text":
             return "Set to Text on SETTINGS."
         if self._pixels_ready:
+            if setting == "pixel" and not self.terminal.pixel_capable():
+                if self.image_protocol == "sixel":
+                    return (f"Pixel is chosen on SETTINGS: graphs are drawn as Sixel "
+                            f"images, which {self.terminal.label} says it can show.")
+                return ("Pixel is chosen on SETTINGS — if graphs show as blank boxes, "
+                        "this terminal can't draw them: choose Auto.")
             return self.terminal.graphics_reason()
         if self.terminal.graphics_mode(setting) == "pixel":
             blocker = self._pixel_blocker()
@@ -288,7 +321,7 @@ class NetzillaApp(App):
 
     def on_resize(self, event) -> None:
         if self._pixels_ready:
-            self._cell_px = termcaps.cell_size_from_ioctl() or self._cell_px
+            self._cell_px = self._measure_cells() or self._cell_px
 
     # ------------------------------------------------------------- themes
     def apply_theme(self, name: str, persist: bool = True) -> None:
@@ -388,7 +421,7 @@ class NetzillaApp(App):
             )
         for mode, help_text in (
             ("auto", "Pixel graphs when the terminal can show them, text otherwise"),
-            ("pixel", "Always draw graphs as images (kitty graphics protocol)"),
+            ("pixel", "Always draw graphs as images (kitty graphics protocol or Sixel)"),
             ("text", "Always draw graphs with text characters"),
         ):
             yield SystemCommand(
@@ -417,3 +450,29 @@ class NetzillaApp(App):
         now = self.set_graphics(mode)
         self.notify(f"Graphics: {mode} — graphs are drawn as {now}.",
                     title="Graphics", timeout=3)
+
+
+def _with_sixels(screen, update):
+    """`update` (a Textual compositor update) with the Sixel overlay's
+    redraws appended to what it writes; anything else passes unchanged."""
+    try:
+        from textual._compositor import CompositorUpdate
+    except Exception:
+        return update
+    if not isinstance(update, CompositorUpdate):
+        return update
+
+    class WithSixels(CompositorUpdate):
+        def render_segments(self, console) -> str:
+            text = update.render_segments(console)
+            try:
+                from .graphics import sixel
+
+                return text + sixel.overlay(screen, update)
+            except Exception:
+                return text
+
+        def __rich_console__(self, console, options):
+            yield from update.__rich_console__(console, options)
+
+    return WithSixels()

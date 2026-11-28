@@ -199,7 +199,8 @@ HELP: dict[str, dict[str, ToolHelp]] = {
                 "Find lame delegations or wrong NS records at the registrar.",
             ),
             targets=("example.com", "bbc.co.uk"),
-            note="Needs dig. Outbound UDP/53 to the root servers must be allowed.",
+            note="Outbound UDP/53 to the root servers must be allowed. Without dig, "
+                 "netzilla walks the delegation itself and prints the same steps.",
         ),
         "reverse": H(
             "Type an IP. Looks up its PTR record, using 'DNS server' if set.",
@@ -1545,8 +1546,11 @@ ON_OS: dict[str, dict[tuple[str, str], dict]] = {
                  "gives the same facts over HTTPS.",
         ),
         ("DNSWhoisPane", "trace"): dict(
-            note="Needs dig, which Windows doesn't have, so this one runs on Linux "
-                 "and macOS only. RESOLVERS and RDAP work everywhere.",
+            note="Windows has no dig, so netzilla walks the delegation itself: a root "
+                 "server first, then each level's servers, over plain UDP/53 (TCP "
+                 "when an answer is too big), printing what each one hands down as "
+                 "dig +trace does. Networks that only let DNS reach their own "
+                 "resolvers stop it at the first step, and it says so.",
         ),
         ("SSLTLSPane", "openssl"): dict(
             note="Windows has no openssl, so netzilla shakes hands with Python's own "
@@ -1555,9 +1559,11 @@ ON_OS: dict[str, dict[tuple[str, str], dict]] = {
                  "report:  winget install ShiningLight.OpenSSL.Light",
         ),
         ("LANPane", "dhcp"): dict(
-            note="Windows' DHCP Client service keeps UDP/68, where DHCP offers "
-                 "arrive, so this can't listen on Windows. Run it from Linux or macOS "
-                 "on the same network.",
+            note="Needs a terminal opened with 'Run as administrator'. Windows' DHCP "
+                 "Client service keeps UDP/68, where offers arrive, so netzilla hears "
+                 "them on a raw socket on the default route's network instead (no "
+                 "Npcap needed). If Windows Defender Firewall asks about Python, "
+                 "allow it on private networks.",
         ),
         ("LANPane", "snmp"): dict(
             targets=("any switch/router you manage with SNMP enabled",),

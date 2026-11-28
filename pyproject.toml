@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "netzilla"
-version = "4.6.0"
+version = "4.7.0"
 description = "Retro terminal TUI for network engineers: Wi-Fi/RF analysis, LAN diagnostics (ARP/DHCP/SNMP/syslog), DNS/RDAP/DoH, BGP, TLS/CT, threat intel and config review — free and open data sources only, with pixel graphs in kitty and Ghostty."
 readme = "README.txt"
 requires-python = ">=3.10"

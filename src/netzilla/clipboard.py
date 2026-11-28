@@ -26,6 +26,7 @@ from rich.console import Console
 
 from . import termcaps
 from .graphics.kitty import PLACEHOLDER
+from .graphics.sixel import MARKER
 
 # Kept short: a clipboard tool that hangs must not freeze the interface.
 TOOL_TIMEOUT = 2.0
@@ -43,8 +44,11 @@ def plain(renderables, width: int = 120) -> str:
 
 
 def _strip_graphics(text: str) -> str:
-    """Pixel graphs are placeholder characters underneath; a pasted graph
-    becomes a plain shaded block of the same size."""
+    """Pixel graphs are placeholder characters underneath (Sixel graphs,
+    blank marker cells); a pasted graph becomes a plain shaded block of the
+    same size."""
+    if MARKER in text:
+        text = text.replace(MARKER, "░")
     if PLACEHOLDER not in text:
         return text
     lines = []

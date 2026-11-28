@@ -11,6 +11,13 @@ port, i.e. root — so `detect()` raises PermissionError without it and the tab
 tells the user to run `sudo netzilla`. The packet build and parse are pure
 functions with no privilege needed, so they are unit-tested directly.
 
+Windows: its DHCP Client service keeps UDP/68 for itself, so the offers are
+heard instead on a raw socket (SIO_RCVALL, Windows' own capture switch — no
+Npcap needed) on the default route's interface, while the DISCOVER goes out
+from an ordinary UDP socket. Raw sockets need an Administrator terminal, the
+same way the other systems need root. When the DHCP Client service is stopped
+the plain way is used.
+
 BOOTP/DHCP wire format: RFC 2131 (message) and RFC 2132 (options).
 """
 
@@ -142,8 +149,11 @@ def _ip_list(blob: bytes | None) -> list[str]:
 async def detect(listen_seconds: float = 5.0, mac: str | None = None) -> list[dict]:
     """Broadcast a DISCOVER and collect OFFERs for `listen_seconds`.
 
-    Raises PermissionError if binding UDP/68 is not allowed (needs root).
+    Raises PermissionError if binding UDP/68 is not allowed (needs root), or
+    on Windows without an Administrator terminal.
     """
+    if hostos.is_windows():
+        return await asyncio.to_thread(detect_windows, listen_seconds, mac)
     packet, xid, _ = build_discover(mac=mac)
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -155,25 +165,12 @@ async def detect(listen_seconds: float = 5.0, mac: str | None = None) -> list[di
             pass
         sock.bind(("", CLIENT_PORT))
     except PermissionError as exc:
-        raise PermissionError(
-            WINDOWS_PORT_HELP if hostos.is_windows() else
-            "Binding UDP/68 requires root. Run: sudo netzilla"
-        ) from exc
+        raise PermissionError("Binding UDP/68 requires root. Run: sudo netzilla") from exc
     except OSError as exc:
         raise PermissionError(
-            WINDOWS_PORT_HELP if hostos.is_windows() else
             f"Could not open the DHCP client port ({exc}). "
             "Another DHCP client may be using it, or this needs root."
         ) from exc
-
-    if hostos.is_windows():
-        # Windows' default event loop has no datagram sock_recvfrom before
-        # Python 3.11, so the listening runs on a worker thread instead.
-        try:
-            return await asyncio.to_thread(_listen_blocking, sock, packet, xid,
-                                           listen_seconds)
-        finally:
-            sock.close()
 
     offers: dict[str, dict] = {}
     loop = asyncio.get_running_loop()
@@ -199,32 +196,185 @@ async def detect(listen_seconds: float = 5.0, mac: str | None = None) -> list[di
     return list(offers.values())
 
 
-WINDOWS_PORT_HELP = (
-    "Windows' DHCP Client service holds UDP/68, the port DHCP offers come "
-    "back to, so netzilla can't listen there while that service runs. "
-    "ROGUE DHCP works from Linux or macOS on the same network."
+# ---------------------------------------------------------------- Windows
+WINDOWS_ADMIN_HELP = (
+    "Windows' DHCP Client service keeps UDP/68, the port DHCP offers come back "
+    "to, so netzilla listens for them on a raw socket instead — and Windows only "
+    "lets an Administrator open one. Close netzilla, right-click Windows Terminal, "
+    "choose 'Run as administrator', and run ROGUE DHCP again."
 )
+# Windows' capture switch for a raw socket (mstcpip.h), in case this Python
+# doesn't name them.
+SIO_RCVALL = 0x98000001
+RCVALL_ON = 1           # everything the adapter sees (promiscuous where it can)
+RCVALL_IPLEVEL = 3      # everything that reaches IP on this host, no promiscuity
+UDP = 17
+LAST_HEARD = ""         # how the last Windows run listened: "udp/68" or "raw socket on …"
 
 
-def _listen_blocking(sock, packet: bytes, xid: int, listen_seconds: float) -> list[dict]:
-    """detect()'s send-and-listen with a blocking socket (Windows)."""
-    offers: dict[str, dict] = {}
-    sock.setblocking(True)
-    sock.settimeout(0.5)
-    sock.sendto(packet, ("255.255.255.255", SERVER_PORT))
-    deadline = time.monotonic() + listen_seconds
-    while time.monotonic() < deadline:
+def primary_ipv4(sockets=socket) -> str:
+    """This machine's IPv4 address on the default route. Connecting a UDP
+    socket picks the route without sending a single packet."""
+    try:
+        probe = sockets.socket(sockets.AF_INET, sockets.SOCK_DGRAM)
         try:
-            data, addr = sock.recvfrom(2048)
+            probe.connect(("192.0.2.1", 9))       # TEST-NET-1: never contacted
+            address = probe.getsockname()[0]
+        finally:
+            probe.close()
+        if address and not address.startswith(("0.", "127.")):
+            return address
+    except OSError:
+        pass
+    try:
+        address = sockets.gethostbyname(sockets.gethostname())
+    except OSError:
+        return ""
+    return "" if address.startswith(("0.", "127.")) else address
+
+
+def offer_from_ip_packet(data: bytes, xid: int | None = None) -> dict | None:
+    """A DHCPOFFER out of a whole IPv4 packet, as a raw socket hands it over:
+    IP header, then UDP from port 67 to port 68, then the BOOTP message."""
+    if len(data) < 28 or data[0] >> 4 != 4:
+        return None
+    header = (data[0] & 0x0F) * 4
+    if header < 20 or len(data) < header + 8 or data[9] != UDP:
+        return None
+    if struct.unpack("!H", data[6:8])[0] & 0x1FFF:
+        return None                     # a later fragment of something bigger
+    source = socket.inet_ntoa(data[12:16])
+    sport, dport, length = struct.unpack("!HHH", data[header:header + 6])
+    if sport != SERVER_PORT or dport != CLIENT_PORT:
+        return None
+    end = header + length if length >= 8 else len(data)
+    offer = parse_offer(data[header + 8:end], expected_xid=xid)
+    if offer is not None:
+        offer["from"] = source
+    return offer
+
+
+def _client_port_socket(sockets=socket):
+    """UDP/68 the plain way — free on Windows only when the DHCP Client
+    service is stopped. No SO_REUSEADDR: the port is shared with nobody."""
+    sock = sockets.socket(sockets.AF_INET, sockets.SOCK_DGRAM)
+    try:
+        sock.setsockopt(sockets.SOL_SOCKET, sockets.SO_BROADCAST, 1)
+        sock.bind(("", CLIENT_PORT))
+    except BaseException:
+        sock.close()
+        raise
+    return sock
+
+
+def _raw_listener(address: str, sockets=socket):
+    """A raw socket on `address`'s interface that sees every IPv4 packet."""
+    sock = sockets.socket(sockets.AF_INET, sockets.SOCK_RAW, sockets.IPPROTO_IP)
+    try:
+        sock.bind((address, 0))
+        try:
+            sock.setsockopt(sockets.SOL_SOCKET, sockets.SO_RCVBUF, 1 << 20)
+        except OSError:
+            pass
+        control = getattr(sockets, "SIO_RCVALL", SIO_RCVALL)
+        failure: OSError | None = None
+        for mode in (getattr(sockets, "RCVALL_ON", RCVALL_ON),
+                     getattr(sockets, "RCVALL_IPLEVEL", RCVALL_IPLEVEL)):
+            try:
+                sock.ioctl(control, mode)
+                failure = None
+                break
+            except OSError as exc:
+                failure = exc
+        if failure is not None:
+            raise failure
+    except BaseException:
+        sock.close()
+        raise
+    return sock
+
+
+def _hear(sock, xid: int, listen_seconds: float, raw: bool,
+          clock=time.monotonic) -> list[dict]:
+    """Offers for `xid` until the time is up, one per server."""
+    offers: dict[str, dict] = {}
+    sock.settimeout(0.25)
+    deadline = clock() + listen_seconds
+    while clock() < deadline:
+        try:
+            if raw:
+                data, addr = sock.recv(65535), None
+            else:
+                data, addr = sock.recvfrom(2048)
         except socket.timeout:
             continue
         except OSError:
             break
-        offer = parse_offer(data, expected_xid=xid)
+        if raw:
+            offer = offer_from_ip_packet(data, xid)
+        else:
+            offer = parse_offer(data, expected_xid=xid)
+            if offer is not None:
+                offer["from"] = addr[0]
         if offer:
-            offer["from"] = addr[0]
-            offers.setdefault(offer.get("server_id") or addr[0], offer)
+            offers.setdefault(offer.get("server_id") or offer["from"], offer)
     return list(offers.values())
+
+
+def detect_windows(listen_seconds: float = 5.0, mac: str | None = None,
+                   sockets=socket, admin: bool | None = None, address: str = "",
+                   clock=time.monotonic) -> list[dict]:
+    """ROGUE DHCP on Windows (runs on a worker thread). Each offer is marked
+    with how it was heard: "heard" = "udp/68" or "raw socket on <address>"."""
+    global LAST_HEARD
+    packet, xid, _ = build_discover(mac=mac)
+    LAST_HEARD = ""
+    try:
+        port = _client_port_socket(sockets)
+    except OSError:
+        port = None
+    if port is not None:
+        try:
+            port.sendto(packet, ("255.255.255.255", SERVER_PORT))
+            offers = _hear(port, xid, listen_seconds, raw=False, clock=clock)
+        finally:
+            port.close()
+        LAST_HEARD = "udp/68"
+        for offer in offers:
+            offer["heard"] = LAST_HEARD
+        return offers
+
+    if not (hostos.is_admin() if admin is None else admin):
+        raise PermissionError(WINDOWS_ADMIN_HELP)
+    address = address or primary_ipv4(sockets)
+    if not address:
+        raise OSError("This machine has no IPv4 address on a network to listen on — "
+                      "is it connected?")
+    try:
+        listener = _raw_listener(address, sockets)
+    except PermissionError as exc:
+        raise PermissionError(WINDOWS_ADMIN_HELP) from exc
+    except OSError as exc:
+        raise OSError(f"Windows would not open a raw socket on {address} ({exc}). "
+                      "Some VPN and security software blocks them.") from exc
+    sender = sockets.socket(sockets.AF_INET, sockets.SOCK_DGRAM)
+    try:
+        sender.setsockopt(sockets.SOL_SOCKET, sockets.SO_BROADCAST, 1)
+        sender.bind((address, 0))
+        sender.sendto(packet, ("255.255.255.255", SERVER_PORT))
+        offers = _hear(listener, xid, listen_seconds, raw=True, clock=clock)
+    finally:
+        sender.close()
+        try:
+            listener.ioctl(getattr(sockets, "SIO_RCVALL", SIO_RCVALL),
+                           getattr(sockets, "RCVALL_OFF", 0))
+        except (OSError, AttributeError, ValueError):
+            pass
+        listener.close()
+    LAST_HEARD = f"raw socket on {address}"
+    for offer in offers:
+        offer["heard"] = LAST_HEARD
+    return offers
 
 
 def verdict(offers: list[dict]) -> tuple[str, str]:
